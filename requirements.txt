@@ -1,0 +1,9 @@
+# Core
+pydantic
+httpx
+pypdf
+python-dotenv
+
+# Pipeline
+feedparser
+requests

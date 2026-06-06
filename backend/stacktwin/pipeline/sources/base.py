@@ -7,7 +7,7 @@ from datetime import datetime
 class Article:
     """
     Standard article shape across all sources.
-    Every source returns a list of these — nothing else.
+    Every source returns a list of these, nothing else.
     """
     title: str
     url: str
@@ -38,7 +38,7 @@ class BaseSource(ABC):
     Every source must implement this contract.
     To add a new source: create a class, inherit BaseSource,
     implement name, source_type, and fetch().
-    That's it — the pipeline picks it up automatically.
+    That's it. The pipeline picks it up automatically.
     """
 
     @property
@@ -58,7 +58,7 @@ class BaseSource(ABC):
         """
         Fetch articles from this source.
         Always returns a list of Article objects.
-        Never raises — return empty list on failure.
+        Never raises. Return empty list on failure.
         """
         pass
 

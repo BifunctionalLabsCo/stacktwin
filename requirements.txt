@@ -1,9 +1,14 @@
-# Core
+# Compatibility only.
+# Prefer pyproject.toml with uv:
+# uv sync --extra dev
+
+fastapi
+uvicorn[standard]
 pydantic
+pydantic-settings
 httpx
+orjson
 pypdf
 python-dotenv
-
-# Pipeline
 feedparser
 requests

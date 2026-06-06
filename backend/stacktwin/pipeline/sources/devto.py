@@ -1,5 +1,5 @@
 import requests
-from pipeline.sources.base import BaseSource, Article
+from stacktwin.pipeline.sources.base import BaseSource, Article
 
 
 DEVTO_API_URL = "https://dev.to/api/articles"

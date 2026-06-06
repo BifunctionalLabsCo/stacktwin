@@ -1,5 +1,5 @@
 import requests
-from pipeline.sources.base import BaseSource, Article
+from stacktwin.pipeline.sources.base import BaseSource, Article
 
 
 HN_TOP_STORIES_URL = "https://hacker-news.firebaseio.com/v0/topstories.json"
@@ -18,14 +18,14 @@ class HackerNewsSource(BaseSource):
 
     def fetch(self, limit: int = 50) -> list[Article]:
         try:
-            # Step 1 — get top story IDs
+            # Step 1: get top story IDs.
             response = requests.get(HN_TOP_STORIES_URL, timeout=10)
             response.raise_for_status()
             story_ids = response.json()[:limit]
 
             articles = []
 
-            # Step 2 — fetch each story
+            # Step 2: fetch each story.
             for story_id in story_ids:
                 try:
                     item_response = requests.get(
@@ -47,14 +47,14 @@ class HackerNewsSource(BaseSource):
                         title=item.get("title", ""),
                         url=item.get("url", ""),
                         source=self.source_type,
-                        summary="",  # HN has no summary — LLM will generate later
+                        summary="",
                         tags=[],
                         published_at=str(item.get("time", "")),
                         score=item.get("score", 0)
                     ))
 
                 except Exception:
-                    # Skip any single failing item — never crash the whole fetch
+                    # Skip any single failing item. Never crash the whole fetch.
                     continue
 
             return articles

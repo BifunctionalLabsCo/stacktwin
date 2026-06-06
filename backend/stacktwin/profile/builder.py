@@ -1,7 +1,7 @@
 import os
 import json
 import httpx
-from profile.schema import DeveloperProfile, ExperienceLevel, ContentFormat
+from stacktwin.profile.schema import DeveloperProfile
 
 
 NEBIUS_API_URL = os.getenv("NEBIUS_API_URL", "https://api.studio.nebius.com/v1")
@@ -32,13 +32,13 @@ Return ONLY a valid JSON object with these exact fields:
 }
 
 Rules:
-- Extract only what is clearly stated — do not invent or assume
+- Extract only what is clearly stated. Do not invent or assume
 - current_stack = technologies they actively use today
 - learning = technologies they are currently learning or transitioning to
 - domains = areas like microservices, cloud, backend, ML, DevOps
 - career_direction = one sentence summary of where they are heading
 - If weekly_time_budget_hours is not mentioned default to 2.0
-- Return JSON only — no explanation, no markdown, no code fences
+- Return JSON only. No explanation, no markdown, no code fences
 """
 
 
@@ -53,13 +53,13 @@ def build_profile_from_text(raw_text: str, source: str = "cv") -> DeveloperProfi
     if not raw_text or len(raw_text.strip()) < 50:
         raise ValueError("Text too short to build a meaningful profile")
 
-    # Truncate to avoid token limits — 3000 chars is enough for a CV
+    # Truncate to avoid token limits. 3000 chars is enough for a CV.
     truncated = raw_text[:3000]
 
     payload = {
         "model": MODEL,
         "max_tokens": 1000,
-        "temperature": 0.1,  # low temperature — we want consistent structured output
+        "temperature": 0.1,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"Extract the developer profile from this text:\n\n{truncated}"}
@@ -91,17 +91,16 @@ def build_profile_from_text(raw_text: str, source: str = "cv") -> DeveloperProfi
     except json.JSONDecodeError:
         raise ValueError(f"Nebius returned invalid JSON:\n{raw_json}")
 
-    # Attach metadata
     data["profile_source"] = source
-    data["raw_text"] = raw_text[:500]  # store first 500 chars only
+    data["raw_text"] = raw_text[:500]
 
     return DeveloperProfile(**data)
 
 
 def build_profile_from_file(file_path: str) -> DeveloperProfile:
     """
-    Convenience wrapper — extract text from file then build profile.
+    Convenience wrapper that extracts text from file, then builds a profile.
     """
-    from profile.extractor import extract_text_from_file
+    from stacktwin.profile.extractor import extract_text_from_file
     raw_text = extract_text_from_file(file_path)
     return build_profile_from_text(raw_text, source="cv")

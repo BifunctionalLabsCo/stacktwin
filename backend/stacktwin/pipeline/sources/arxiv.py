@@ -1,7 +1,7 @@
 import ssl
 import urllib.request
 import feedparser
-from pipeline.sources.base import BaseSource, Article
+from stacktwin.pipeline.sources.base import BaseSource, Article
 
 
 ARXIV_FEEDS = {

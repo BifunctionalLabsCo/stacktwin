@@ -20,14 +20,14 @@ def extract_text_from_pdf(file_path: str) -> str:
 
 def extract_text_from_string(raw: str) -> str:
     """
-    Accept plain text directly — for manual input fallback.
+    Accept plain text directly for manual input fallback.
     """
     return _clean_text(raw)
 
 
 def extract_text_from_file(file_path: str) -> str:
     """
-    Router — decides extraction method based on file type.
+    Router that decides extraction method based on file type.
     Extend this as we support more formats (docx, txt etc).
     """
     path = Path(file_path)

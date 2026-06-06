@@ -7,6 +7,7 @@
 venv/
 env/
 .venv/
+.uv-cache/
 
 # Python
 __pycache__/
@@ -23,6 +24,12 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Frontend
+node_modules/
+.next/
+out/
+*.tsbuildinfo
 
 # IDE
 .vscode/

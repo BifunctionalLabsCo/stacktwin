@@ -1,13 +1,13 @@
 import json
 import os
 from datetime import datetime
-from pipeline.sources.base import Article
-from pipeline.sources.hackernews import HackerNewsSource
-from pipeline.sources.arxiv import ArxivSource
-from pipeline.sources.devto import DevToSource
+from stacktwin.pipeline.sources.base import Article
+from stacktwin.pipeline.sources.hackernews import HackerNewsSource
+from stacktwin.pipeline.sources.arxiv import ArxivSource
+from stacktwin.pipeline.sources.devto import DevToSource
 
 
-# Registry — add new sources here, nothing else changes
+# Registry: add new sources here, nothing else changes.
 SOURCES = [
     HackerNewsSource(),
     ArxivSource(),

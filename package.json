@@ -1,0 +1,9 @@
+{
+  "name": "stacktwin-workspace",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix src run build",
+    "dev": "npm --prefix src run dev",
+    "lint": "npm --prefix src run lint"
+  }
+}

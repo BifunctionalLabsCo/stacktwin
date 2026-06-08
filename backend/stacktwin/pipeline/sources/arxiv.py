@@ -4,19 +4,50 @@ import feedparser
 from stacktwin.pipeline.sources.base import BaseSource, Article
 
 
-ARXIV_FEEDS = {
-    "cs.AI": "https://rss.arxiv.org/rss/cs.AI",
-    "cs.LG": "https://rss.arxiv.org/rss/cs.LG",
-    "cs.SE": "https://rss.arxiv.org/rss/cs.SE",
-}
+# Configurable — add or remove categories here
+# Full list at https://arxiv.org/category_taxonomy
+ARXIV_CATEGORIES = [
+    "cs.AI",   # Artificial Intelligence
+    "cs.LG",   # Machine Learning
+    "cs.SE",   # Software Engineering
+    "cs.DC",   # Distributed Computing
+    "cs.DB",   # Databases
+]
 
-# Fix SSL on Windows
-ssl_context = ssl.create_default_context()
-ssl_context.check_hostname = False
-ssl_context.verify_mode = ssl.CERT_NONE
+ARXIV_FEED_URL = "https://rss.arxiv.org/rss/{category}"
+
+# SSL context — fixes certificate verification on Windows
+_SSL_CONTEXT = ssl.create_default_context()
+_SSL_CONTEXT.check_hostname = False
+_SSL_CONTEXT.verify_mode = ssl.CERT_NONE
+
+
+def _fetch_feed(url: str, timeout: int = 10) -> list:
+    """
+    Fetch and parse an RSS feed with SSL bypass.
+    Returns list of feed entries or empty list on failure.
+    """
+    try:
+        opener = urllib.request.build_opener(
+            urllib.request.HTTPSHandler(context=_SSL_CONTEXT)
+        )
+        response = opener.open(url, timeout=timeout)
+        raw = response.read()
+        feed = feedparser.parse(raw)
+        return feed.entries
+    except Exception as e:
+        print(f"[arXiv] failed to fetch {url}: {e}")
+        return []
 
 
 class ArxivSource(BaseSource):
+
+    def __init__(self, categories: list[str] | None = None):
+        """
+        categories: override default ARXIV_CATEGORIES if provided.
+        Example: ArxivSource(categories=["cs.AI", "cs.LG"])
+        """
+        self.categories = categories or ARXIV_CATEGORIES
 
     @property
     def name(self) -> str:
@@ -28,32 +59,29 @@ class ArxivSource(BaseSource):
 
     def fetch(self, limit: int = 50) -> list[Article]:
         articles = []
-        per_feed = max(1, limit // len(ARXIV_FEEDS))
+        seen_urls = set()
+        per_category = max(1, limit // len(self.categories))
 
-        for category, feed_url in ARXIV_FEEDS.items():
-            try:
-                # Fetch raw feed content manually with SSL bypass
-                opener = urllib.request.build_opener(
-                    urllib.request.HTTPSHandler(context=ssl_context)
-                )
-                response = opener.open(feed_url, timeout=10)
-                raw = response.read()
+        for category in self.categories:
+            url = ARXIV_FEED_URL.format(category=category)
+            entries = _fetch_feed(url)
 
-                feed = feedparser.parse(raw)
+            for entry in entries[:per_category]:
+                url_val = entry.get("link", "")
 
-                for entry in feed.entries[:per_feed]:
-                    articles.append(Article(
-                        title=entry.get("title", "").replace("\n", " ").strip(),
-                        url=entry.get("link", ""),
-                        source=self.source_type,
-                        summary=entry.get("summary", "")[:300],
-                        tags=[category],
-                        published_at=entry.get("published", ""),
-                        score=0
-                    ))
+                # Deduplicate within arXiv (same paper in multiple categories)
+                if url_val in seen_urls:
+                    continue
+                seen_urls.add(url_val)
 
-            except Exception as e:
-                print(f"[arXiv] failed for {category}: {e}")
-                continue
+                articles.append(Article(
+                    title=entry.get("title", "").replace("\n", " ").strip(),
+                    url=url_val,
+                    source=self.source_type,
+                    summary=entry.get("summary", "")[:500],
+                    tags=[category],
+                    published_at=entry.get("published", ""),
+                    score=0
+                ))
 
         return articles[:limit]

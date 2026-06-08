@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime
+from datetime import datetime, UTC
 from stacktwin.pipeline.sources.base import Article
 from stacktwin.pipeline.sources.hackernews import HackerNewsSource
 from stacktwin.pipeline.sources.arxiv import ArxivSource
@@ -48,8 +48,7 @@ def save_articles(articles: list[Article], output_dir: str = "outputs") -> str:
     Returns the file path.
     """
     os.makedirs(output_dir, exist_ok=True)
-    filename = f"articles_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
-    filepath = os.path.join(output_dir, filename)
+    filename = f"articles_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.json"    filepath = os.path.join(output_dir, filename)
 
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(

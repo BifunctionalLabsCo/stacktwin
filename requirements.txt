@@ -12,3 +12,5 @@ pypdf
 python-dotenv
 feedparser
 requests
+beautifulsoup4
+pytest

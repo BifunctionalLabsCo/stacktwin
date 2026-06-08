@@ -1,0 +1,180 @@
+import os
+import ssl
+import urllib.request
+import feedparser
+from stacktwin.pipeline.sources.base import BaseSource, Article
+
+
+# Curated developer YouTube channels
+# Format: (channel_name, channel_id)
+DEFAULT_CHANNELS = [
+      ("Fireship", "UCsBjURrPoezykLs9EqgamOA"),
+    ("Google for Developers", "UC_x5XG1OV2P6uZZ5FSM9Ttw"),
+    ("Nick Chapsas", "UCrkPsvLGln62OMZRO6K-llg"),
+    ("Traversy Media", "UC29ju8bIPH5as8OGnQzwJyA"),
+    ("TechWorld with Nana", "UCdngmbVKX1Tgre699-XLlUA"),
+    ("Theo - t3.gg", "UCbRP3c757lWg9M-U7TyEkXA"),
+]
+
+YOUTUBE_RSS_URL = "https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/search"
+
+# SSL context for Windows
+_SSL_CONTEXT = ssl.create_default_context()
+_SSL_CONTEXT.check_hostname = False
+_SSL_CONTEXT.verify_mode = ssl.CERT_NONE
+
+
+def _fetch_channel_rss(channel_id: str, timeout: int = 10) -> list:
+    """
+    Fetch latest videos for a channel via YouTube RSS feed.
+    No API key required. Safe default.
+    """
+    try:
+        url = YOUTUBE_RSS_URL.format(channel_id=channel_id)
+        opener = urllib.request.build_opener(
+            urllib.request.HTTPSHandler(context=_SSL_CONTEXT)
+        )
+        response = opener.open(url, timeout=timeout)
+        raw = response.read()
+        feed = feedparser.parse(raw)
+        return feed.entries
+    except Exception as e:
+        print(f"[YouTube] RSS failed for channel {channel_id}: {e}")
+        return []
+
+
+class YouTubeSource(BaseSource):
+    """
+    YouTube source adapter.
+
+    Fetch strategy:
+    - If YOUTUBE_API_KEY is set in environment, uses YouTube Data API v3.
+    - Otherwise falls back to RSS feeds per channel (no key required).
+    - Missing credentials produce a skipped-source status, not a crash.
+
+    Configuration via environment variables:
+    - YOUTUBE_API_KEY: optional, enables API-based fetching
+    - YOUTUBE_MAX_RESULTS: optional, results per query (default 10)
+    """
+
+    def __init__(self, channels: list[tuple[str, str]] | None = None):
+        self.channels = channels or DEFAULT_CHANNELS
+        self.api_key = os.getenv("YOUTUBE_API_KEY", "")
+        self.max_results = int(os.getenv("YOUTUBE_MAX_RESULTS", "10"))
+        self._status = "ready"
+
+    @property
+    def name(self) -> str:
+        return "YouTube"
+
+    @property
+    def source_type(self) -> str:
+        return "youtube"
+
+    @property
+    def status(self) -> str:
+        """
+        Returns source readiness status.
+        Used by ingestion pipeline for status reporting.
+        """
+        return self._status
+
+    def fetch(self, limit: int = 50) -> list[Article]:
+        if self.api_key:
+            return self._fetch_via_api(limit)
+        return self._fetch_via_rss(limit)
+
+    def _fetch_via_rss(self, limit: int) -> list[Article]:
+        """Fetch using RSS — no API key required."""
+        articles = []
+        seen_urls = set()
+        per_channel = max(1, limit // len(self.channels))
+
+        for channel_name, channel_id in self.channels:
+            entries = _fetch_channel_rss(channel_id)
+
+            count = 0
+            for entry in entries:
+                if count >= per_channel:
+                    break
+
+                video_url = entry.get("link", "")
+                if not video_url or video_url in seen_urls:
+                    continue
+                seen_urls.add(video_url)
+
+                summary = entry.get("summary", "")[:300]
+
+                articles.append(Article(
+                    title=entry.get("title", ""),
+                    url=video_url,
+                    source=self.source_type,
+                    summary=summary,
+                    tags=[channel_name, "video"],
+                    published_at=entry.get("published", ""),
+                    score=0
+                ))
+                count += 1
+
+        self._status = f"ok:rss:{len(articles)}_articles"
+        return articles[:limit]
+
+    def _fetch_via_api(self, limit: int) -> list[Article]:
+        """
+        Fetch using YouTube Data API v3.
+        Requires YOUTUBE_API_KEY environment variable.
+        """
+        import requests
+
+        articles = []
+        seen_urls = set()
+
+        # Build search queries from channel names
+        queries = [name for name, _ in self.channels]
+
+        for query in queries:
+            try:
+                response = requests.get(
+                    YOUTUBE_API_URL,
+                    params={
+                        "part": "snippet",
+                        "q": query,
+                        "type": "video",
+                        "maxResults": self.max_results,
+                        "order": "date",
+                        "key": self.api_key,
+                    },
+                    timeout=10
+                )
+                response.raise_for_status()
+                items = response.json().get("items", [])
+
+                for item in items:
+                    video_id = item.get("id", {}).get("videoId", "")
+                    if not video_id:
+                        continue
+
+                    video_url = f"https://www.youtube.com/watch?v={video_id}"
+                    if video_url in seen_urls:
+                        continue
+                    seen_urls.add(video_url)
+
+                    snippet = item.get("snippet", {})
+                    articles.append(Article(
+                        title=snippet.get("title", ""),
+                        url=video_url,
+                        source=self.source_type,
+                        summary=snippet.get("description", "")[:300],
+                        tags=[snippet.get("channelTitle", ""), "video"],
+                        published_at=snippet.get("publishedAt", ""),
+                        score=0
+                    ))
+
+            except Exception as e:
+                print(f"[YouTube] API failed for query '{query}': {e}")
+                self._status = f"degraded:api_error"
+                continue
+
+        self._status = f"ok:api:{len(articles)}_articles"
+        return articles[:limit]

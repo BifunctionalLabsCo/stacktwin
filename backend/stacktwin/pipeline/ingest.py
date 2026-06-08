@@ -5,13 +5,16 @@ from stacktwin.pipeline.sources.base import Article
 from stacktwin.pipeline.sources.hackernews import HackerNewsSource
 from stacktwin.pipeline.sources.arxiv import ArxivSource
 from stacktwin.pipeline.sources.devto import DevToSource
-
+from stacktwin.pipeline.sources.github_trending import GitHubTrendingSource
+from stacktwin.pipeline.sources.youtube import YouTubeSource
 
 # Registry: add new sources here, nothing else changes.
 SOURCES = [
     HackerNewsSource(),
     ArxivSource(),
     DevToSource(),
+    GitHubTrendingSource(),
+    YouTubeSource(),
 ]
 
 

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, UTC
 
 
 @dataclass
@@ -17,7 +17,7 @@ class Article:
     published_at: str = ""               # ISO string when available
     score: int = 0                       # source-native score e.g. HN points
     fetched_at: str = field(
-        default_factory=lambda: datetime.utcnow().isoformat()
+        default_factory=lambda: datetime.now(UTC).isoformat()
     )
 
     def to_dict(self) -> dict:

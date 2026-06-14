@@ -1,58 +1,37 @@
-import json
-import os
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
+from stacktwin.storage.factory import get_storage
 
 
 router = APIRouter()
 
-OUTPUTS_DIR = "outputs"
-
 
 @router.get("/history")
-def get_track_history():
-    """
-    Return all past weekly digests as the learning track history.
-    Shows what the developer has been recommended over time.
-    """
-    if not os.path.exists(OUTPUTS_DIR):
-        return JSONResponse(content={"weeks": [], "total": 0})
-
-    digest_files = sorted([
-        f for f in os.listdir(OUTPUTS_DIR)
-        if f.startswith("digest_") and f.endswith(".json")
-    ], reverse=True)
-
-    weeks = []
-    for filename in digest_files:
-        with open(os.path.join(OUTPUTS_DIR, filename)) as f:
-            digest = json.load(f)
-            weeks.append({
-                "week_start": digest.get("week_start"),
-                "generated_at": digest.get("generated_at"),
-                "items": len(digest.get("items", [])),
-                "total_processed": digest.get("total_items_processed", 0)
-            })
+def get_track_history(
+    user_id: str = Query(..., description="User email address")
+):
+    storage = get_storage()
+    history = storage.load_digest_history(user_id)
 
     return JSONResponse(content={
-        "weeks": weeks,
-        "total": len(weeks)
+        "user_id": user_id,
+        "weeks": history,
+        "total": len(history)
     })
 
 
 @router.get("/history/{week_start}")
-def get_week_digest(week_start: str):
-    """
-    Return a specific week's digest by date.
-    Example: GET /api/track/history/2026-06-09
-    """
-    filepath = os.path.join(OUTPUTS_DIR, f"digest_{week_start}.json")
+def get_week_digest(
+    week_start: str,
+    user_id: str = Query(..., description="User email address")
+):
+    storage = get_storage()
+    digest = storage.load_digest_by_week(user_id, week_start)
 
-    if not os.path.exists(filepath):
+    if not digest:
         raise HTTPException(
             status_code=404,
-            detail=f"No digest found for week {week_start}"
+            detail=f"No digest found for user {user_id} on week {week_start}"
         )
 
-    with open(filepath) as f:
-        return JSONResponse(content=json.load(f))
+    return JSONResponse(content=digest.model_dump())

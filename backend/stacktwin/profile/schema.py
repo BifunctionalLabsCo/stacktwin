@@ -69,7 +69,7 @@ class DigestItem(BaseModel):
     score: ArticleScore
     estimated_reading_minutes: int
     tags: list[str] = Field(default_factory=list)
-
+    quiz: list[dict] = Field(default_factory=list)
 
 class WeeklyDigest(BaseModel):
     week_start: str

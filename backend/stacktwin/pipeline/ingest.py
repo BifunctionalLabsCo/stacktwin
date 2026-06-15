@@ -51,7 +51,8 @@ def save_articles(articles: list[Article], output_dir: str = "outputs") -> str:
     Returns the file path.
     """
     os.makedirs(output_dir, exist_ok=True)
-    filename = f"articles_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.json"    filepath = os.path.join(output_dir, filename)
+    filename = f"articles_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.json"
+    filepath = os.path.join(output_dir, filename)
 
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(
@@ -69,3 +70,39 @@ if __name__ == "__main__":
     articles = fetch_all(limit_per_source=30)
     path = save_articles(articles)
     print(f"\nDone. {len(articles)} articles saved to {path}")
+
+def load_or_fetch(limit_per_source: int = 50, cache_dir: str = "outputs") -> list[Article]:
+    """
+    Load today's article cache if it exists, otherwise fetch fresh.
+    
+    This means:
+    - First run of the day: fetches all sources, saves cache
+    - Subsequent runs same day: loads cache, skips network calls
+    - Next day: fetches fresh again
+    
+    Cache file pattern: outputs/articles_YYYYMMDD_*.json
+    """
+    today = datetime.now(UTC).strftime("%Y%m%d")
+    
+    # Check if today's cache exists
+    if os.path.exists(cache_dir):
+        today_files = sorted([
+            f for f in os.listdir(cache_dir)
+            if f.startswith(f"articles_{today}") and f.endswith(".json")
+        ], reverse=True)
+        
+        if today_files:
+            cache_path = os.path.join(cache_dir, today_files[0])
+            print(f"[ingest] cache hit — loading {cache_path}")
+            with open(cache_path, encoding="utf-8") as f:
+                raw = json.load(f)
+            # Convert dicts back to Article objects
+            articles = [Article(**item) for item in raw]
+            print(f"[ingest] loaded {len(articles)} articles from cache")
+            return articles
+    
+    # No cache for today — fetch fresh
+    print("[ingest] no cache for today — fetching fresh")
+    articles = fetch_all(limit_per_source=limit_per_source)
+    save_articles(articles, output_dir=cache_dir)
+    return articles

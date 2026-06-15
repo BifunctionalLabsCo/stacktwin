@@ -3,6 +3,7 @@ import ssl
 import urllib.request
 import feedparser
 from stacktwin.pipeline.sources.base import BaseSource, Article
+import re
 
 
 # Curated developer YouTube channels
@@ -104,8 +105,9 @@ class YouTubeSource(BaseSource):
                     continue
                 seen_urls.add(video_url)
 
-                summary = entry.get("summary", "")[:300]
-
+                summary = self._clean_description(entry.get("summary", ""))
+                if not summary:
+                    summary = f"Video by {channel_name}"
                 articles.append(Article(
                     title=entry.get("title", ""),
                     url=video_url,
@@ -178,3 +180,44 @@ class YouTubeSource(BaseSource):
 
         self._status = f"ok:api:{len(articles)}_articles"
         return articles[:limit]
+
+    def _clean_description(self, text: str) -> str:
+        """
+        Clean YouTube video description.
+        Strip sponsor links, affiliate codes, URLs, and promotional text.
+        Keep only the first meaningful sentence that describes the content.
+        """
+        if not text:
+            return ""
+
+        # Remove URLs
+        text = re.sub(r'http\S+', '', text)
+
+        # Remove lines that look like promotional content
+        promo_patterns = [
+            r'(?i)use code.*',
+            r'(?i)promo.*',
+            r'(?i)coupon.*',
+            r'(?i)discount.*',
+            r'(?i)affiliate.*',
+            r'(?i)sponsor.*',
+            r'(?i)check out.*',
+            r'(?i)subscribe.*',
+            r'(?i)follow.*on.*',
+            r'(?i)get \$\d+.*',
+            r'(?i)\d+% off.*',
+        ]
+
+        lines = text.split('\n')
+        clean_lines = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            if any(re.search(p, line) for p in promo_patterns):
+                continue
+            clean_lines.append(line)
+
+        # Take first 2 clean lines — that's usually the actual description
+        result = ' '.join(clean_lines[:2])
+        return result[:300].strip()

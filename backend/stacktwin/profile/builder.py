@@ -87,7 +87,20 @@ def build_profile_from_text(raw_text: str, source: str = "cv") -> DeveloperProfi
     raw_json = response.json()["choices"][0]["message"]["content"].strip()
 
     try:
-        data = json.loads(raw_json)
+        clean = raw_json
+        if clean.startswith("```"):
+            clean = clean.split("```")[1]
+            if clean.startswith("json"):
+                clean = clean[4:]
+        clean = clean.strip()
+        data = json.loads(clean)
+        list_fields = [
+            "current_stack", "learning", "domains", "certifications",
+            "learning_goals", "topics_to_track", "topics_to_avoid", "preferred_formats"
+        ]
+        for field in list_fields:
+            if data.get(field) is None:
+                data[field] = []
     except json.JSONDecodeError:
         raise ValueError(f"Nebius returned invalid JSON:\n{raw_json}")
 

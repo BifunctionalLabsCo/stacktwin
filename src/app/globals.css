@@ -1,15 +1,59 @@
+/* ── Brand palette ── */
 :root {
+  --blush-pop: #ffafda;
+  --bubblegum-pink: #ff4f81;
+  --tropical-mint: #40ffb5;
+  --emerald-depths: #00634d;
+  --evergreen: #032b22;
+  --gradient-brand: linear-gradient(135deg, var(--bubblegum-pink), var(--tropical-mint), var(--emerald-depths));
+}
+
+/* ── Light mode (default) ── */
+:root,
+[data-theme="light"] {
   color-scheme: light;
-  --ink: #171717;
-  --muted: #5f6368;
-  --line: #dadce0;
+  --ink: #032b22;
+  --muted: #3d6b5a;
+  --line: #c4ddd6;
   --surface: #ffffff;
-  --soft: #f6f7f8;
-  --accent: #0f766e;
+  --soft: #f2faf7;
+  --accent: #00634d;
   --accent-ink: #ffffff;
   --warn: #b45309;
   --danger: #b42318;
   --done: #2563eb;
+}
+
+/* ── Dark mode ── */
+[data-theme="dark"],
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ink: #e8faf4;
+    --muted: #7ab8a0;
+    --line: #1a4035;
+    --surface: #0a2e23;
+    --soft: #061f17;
+    --accent: #40ffb5;
+    --accent-ink: #032b22;
+    --warn: #f59e0b;
+    --danger: #f87171;
+    --done: #60a5fa;
+  }
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #e8faf4;
+  --muted: #7ab8a0;
+  --line: #1a4035;
+  --surface: #0a2e23;
+  --soft: #061f17;
+  --accent: #40ffb5;
+  --accent-ink: #032b22;
+  --warn: #f59e0b;
+  --danger: #f87171;
+  --done: #60a5fa;
 }
 
 * {
@@ -45,11 +89,13 @@ button {
 }
 
 .eyebrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin: 0 0 10px;
   color: var(--accent);
   font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -60,10 +106,14 @@ p {
 }
 
 h1 {
-  margin-bottom: 12px;
+  margin-bottom: 4px;
   font-size: clamp(2.5rem, 7vw, 5.25rem);
   line-height: 0.95;
-  letter-spacing: 0;
+  letter-spacing: -0.01em;
+  background: var(--gradient-brand);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .lede {
@@ -104,13 +154,13 @@ h1 {
   margin-top: 16px;
   overflow: hidden;
   border-radius: 999px;
-  background: #e8eaed;
+  background: var(--line);
 }
 
 .meter span {
   display: block;
   height: 100%;
-  background: var(--accent);
+  background: var(--gradient-brand);
 }
 
 .summaryStrip {
@@ -198,7 +248,7 @@ h1 {
 }
 
 .status-locked {
-  background: #fafafa;
+  background: var(--soft);
 }
 
 .cardBody {
@@ -245,13 +295,14 @@ h1 {
   height: 42px;
   place-items: center;
   border-radius: 999px;
-  background: var(--ink);
+  background: var(--gradient-brand);
   color: var(--accent-ink);
 }
 
 .cardBottom button:disabled {
   cursor: not-allowed;
-  background: #c7cacf;
+  background: var(--line);
+  color: var(--muted);
 }
 
 .skeletonCard span,
@@ -260,7 +311,14 @@ h1 {
   display: block;
   overflow: hidden;
   border-radius: 999px;
-  background: linear-gradient(90deg, #eceff1, #f8f9fa, #eceff1);
+  background: linear-gradient(90deg, var(--line), var(--soft), var(--line));
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .skeletonCard span {
@@ -281,6 +339,32 @@ h1 {
 
 .skeletonCard p:last-child {
   width: 64%;
+}
+
+/* ── Theme toggle ── */
+.themeToggle {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.themeToggle button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--muted);
+  background: transparent;
+  transition: background 0.15s, color 0.15s;
+}
+
+.themeToggle button[aria-pressed="true"] {
+  background: var(--gradient-brand);
+  color: var(--accent-ink);
 }
 
 @media (max-width: 860px) {

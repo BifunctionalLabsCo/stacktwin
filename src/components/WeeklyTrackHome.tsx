@@ -1,3 +1,7 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   AlertCircle,
   ArrowRight,
@@ -7,17 +11,44 @@ import {
   RotateCcw,
   Sparkles
 } from "lucide-react";
-import { getTrackProgress, type LearningModule, type WeeklyTrackState } from "../lib/weekly-track";
+import {
+  fetchWeeklyTrackState,
+  getTrackProgress,
+  type LearningModule,
+  type WeeklyTrackState
+} from "../lib/weekly-track";
+import { applyCompletedProgress } from "../lib/progress";
 
 const statusMeta = {
   ready: { label: "Ready", Icon: CheckCircle2 },
   queued: { label: "Queued", Icon: Sparkles },
   completed: { label: "Complete", Icon: CheckCircle2 },
   locked: { label: "Waiting", Icon: Lock },
-  failed: { label: "Needs review", Icon: AlertCircle }
+  failed: { label: "Needs review", Icon: AlertCircle },
+  stale: { label: "Update available", Icon: RotateCcw }
 };
 
-export function WeeklyTrackHome({ state }: { state: WeeklyTrackState }) {
+export function WeeklyTrackHome() {
+  const [state, setState] = useState<WeeklyTrackState>({ status: "loading" });
+
+  useEffect(() => {
+    let active = true;
+
+    fetchWeeklyTrackState().then((nextState) => {
+      if (active) {
+        setState(
+          nextState.status === "ready"
+            ? { status: "ready", track: applyCompletedProgress(nextState.track) }
+            : nextState
+        );
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   if (state.status === "loading") {
     return (
       <main className="shell">
@@ -132,14 +163,27 @@ function LaunchCard({ module }: { module: LearningModule }) {
       </div>
       <div className="sourceHints" aria-label="Source hints">
         {module.sourceHints.slice(0, 2).map((source) => (
-          <span key={`${module.id}-${source.source}-${source.title}`}>{formatSource(source.source)}</span>
+          <a
+            href={source.url}
+            key={`${module.id}-${source.source}-${source.title}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {formatSource(source.source)}
+          </a>
         ))}
       </div>
       <div className="cardBottom">
         <span>{module.difficulty}</span>
-        <button type="button" aria-label={`Launch ${module.title}`} disabled={isDisabled}>
-          <ArrowRight size={18} />
-        </button>
+        {isDisabled ? (
+          <button type="button" aria-label={`${module.title} is unavailable`} disabled>
+            <ArrowRight size={18} />
+          </button>
+        ) : (
+          <Link href={`/lesson/${module.id}/`} aria-label={`Launch ${module.title}`}>
+            <ArrowRight size={18} />
+          </Link>
+        )}
       </div>
     </article>
   );

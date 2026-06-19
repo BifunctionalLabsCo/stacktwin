@@ -1,4 +1,4 @@
-export type ModuleStatus = "ready" | "queued" | "completed" | "locked" | "failed";
+export type ModuleStatus = "ready" | "queued" | "completed" | "locked" | "failed" | "stale";
 
 export type SourceReference = {
   title: string;
@@ -31,6 +31,30 @@ export type WeeklyTrackState =
   | { status: "error"; message: string }
   | { status: "ready"; track: WeeklyTrack };
 
+export type LessonModule = LearningModule & {
+  contextBrief: string;
+  objectives: string[];
+  keyConcepts: string[];
+  exercise: {
+    title: string;
+    instructions: string;
+  };
+  checkpoint: {
+    question: string;
+    options: string[];
+    answer: string;
+    explanation: string;
+  };
+  takeaway: string;
+  nextModuleId: string | null;
+  availableActions: string[];
+};
+
+export type LessonState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; lesson: LessonModule };
+
 export async function fetchWeeklyTrackState(): Promise<WeeklyTrackState> {
   try {
     const response = await fetch("/api/track/preview", {
@@ -58,6 +82,31 @@ export async function fetchWeeklyTrackState(): Promise<WeeklyTrackState> {
     return {
       status: "error",
       message: "The weekly track API could not be reached. Start the FastAPI service and retry."
+    };
+  }
+}
+
+export async function fetchLessonState(moduleId: string): Promise<LessonState> {
+  try {
+    const response = await fetch(`/api/track/preview/${encodeURIComponent(moduleId)}`, {
+      headers: { Accept: "application/json" }
+    });
+
+    if (!response.ok) {
+      return {
+        status: "error",
+        message: response.status === 404 ? "This lesson could not be found." : "The lesson API failed."
+      };
+    }
+
+    return {
+      status: "ready",
+      lesson: (await response.json()) as LessonModule
+    };
+  } catch {
+    return {
+      status: "error",
+      message: "The lesson API could not be reached."
     };
   }
 }

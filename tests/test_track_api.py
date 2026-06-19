@@ -40,3 +40,26 @@ def test_health_endpoint_is_available_with_frontend_api():
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+def test_every_preview_module_has_lesson_content():
+    track = client.get("/api/track/preview").json()
+
+    for module in track["modules"]:
+        response = client.get(f"/api/track/preview/{module['id']}")
+        assert response.status_code == 200
+
+        lesson = response.json()
+        assert lesson["contextBrief"]
+        assert lesson["objectives"]
+        assert lesson["keyConcepts"]
+        assert lesson["exercise"]["instructions"]
+        assert lesson["checkpoint"]["options"]
+        assert lesson["takeaway"]
+        assert lesson["availableActions"]
+
+
+def test_unknown_preview_lesson_returns_not_found():
+    response = client.get("/api/track/preview/not-a-module")
+
+    assert response.status_code == 404

@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 SourceType = Literal["hackernews", "arxiv", "devto", "github_trending", "youtube"]
-ModuleStatus = Literal["ready", "queued", "completed", "locked", "failed"]
+ModuleStatus = Literal["ready", "queued", "completed", "locked", "failed", "stale"]
 Difficulty = Literal["Focused", "Intermediate", "Advanced"]
 
 
@@ -35,3 +35,28 @@ class WeeklyTrackResponse(BaseModel):
     learner_focus: str = Field(alias="learnerFocus")
     weekly_time_budget_minutes: int = Field(alias="weeklyTimeBudgetMinutes")
     modules: list[LearningModuleResponse]
+
+
+class ExerciseResponse(BaseModel):
+    title: str
+    instructions: str
+
+
+class CheckpointResponse(BaseModel):
+    question: str
+    options: list[str]
+    answer: str
+    explanation: str
+
+
+class LessonModuleResponse(LearningModuleResponse):
+    model_config = ConfigDict(populate_by_name=True)
+
+    context_brief: str = Field(alias="contextBrief")
+    objectives: list[str]
+    key_concepts: list[str] = Field(alias="keyConcepts")
+    exercise: ExerciseResponse
+    checkpoint: CheckpointResponse
+    takeaway: str
+    next_module_id: str | None = Field(default=None, alias="nextModuleId")
+    available_actions: list[str] = Field(default_factory=list, alias="availableActions")

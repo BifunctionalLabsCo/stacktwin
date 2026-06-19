@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import {
   AlertCircle,
   ArrowRight,
@@ -7,7 +10,12 @@ import {
   RotateCcw,
   Sparkles
 } from "lucide-react";
-import { getTrackProgress, type LearningModule, type WeeklyTrackState } from "../lib/weekly-track";
+import {
+  fetchWeeklyTrackState,
+  getTrackProgress,
+  type LearningModule,
+  type WeeklyTrackState
+} from "../lib/weekly-track";
 
 const statusMeta = {
   ready: { label: "Ready", Icon: CheckCircle2 },
@@ -17,7 +25,23 @@ const statusMeta = {
   failed: { label: "Needs review", Icon: AlertCircle }
 };
 
-export function WeeklyTrackHome({ state }: { state: WeeklyTrackState }) {
+export function WeeklyTrackHome() {
+  const [state, setState] = useState<WeeklyTrackState>({ status: "loading" });
+
+  useEffect(() => {
+    let active = true;
+
+    fetchWeeklyTrackState().then((nextState) => {
+      if (active) {
+        setState(nextState);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   if (state.status === "loading") {
     return (
       <main className="shell">

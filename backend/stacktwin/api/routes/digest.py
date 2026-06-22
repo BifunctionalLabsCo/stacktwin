@@ -1,74 +1,84 @@
-import os
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse, PlainTextResponse
-from stacktwin.storage.factory import get_storage
 
+from stacktwin.storage.factory import get_storage
 
 router = APIRouter()
 
 
 @router.post("/run")
-def run_pipeline(
-    user_id: str = Query(..., description="User email address")
-):
+def run_pipeline(user_id: str = Query(..., description="User email address")):
     """
     Trigger the full pipeline for a specific user.
-    Uses today's article cache if available — skips re-fetching.
+    Uses today's article cache if available and skips re-fetching.
     """
     try:
         storage = get_storage()
+        today = datetime.now(UTC).date()
+        week_start = (today - timedelta(days=today.weekday())).isoformat()
+        existing_digest = storage.load_digest_by_week(user_id, week_start)
+
+        if existing_digest:
+            return JSONResponse(
+                content={
+                    "status": "digest-already-exists",
+                    "user_id": user_id,
+                    "week_start": week_start,
+                    "items": len(existing_digest.items),
+                    "total_processed": existing_digest.total_items_processed,
+                }
+            )
+
         profile = storage.load_profile(user_id)
 
         if not profile:
             raise HTTPException(
-                status_code=404,
-                detail="No profile found for this user. Upload a CV first."
+                status_code=404, detail="No profile found for this user. Upload a CV first."
             )
 
+        from stacktwin.pipeline.digest import build_digest
         from stacktwin.pipeline.ingest import load_or_fetch
         from stacktwin.pipeline.score import score_articles
-        from stacktwin.pipeline.digest import build_digest
 
         print(f"[pipeline] running for user: {user_id}")
         articles = load_or_fetch(limit_per_source=30)
         scored = score_articles(articles, profile)
-        digest = build_digest(scored, profile, top_n=10)
+        digest = build_digest(scored, profile, top_n=10, week_start=week_start)
         path = storage.save_digest(user_id, digest)
 
-        return JSONResponse(content={
-            "status": "ok",
-            "user_id": user_id,
-            "digest_path": path,
-            "items": len(digest.items),
-            "total_processed": digest.total_items_processed
-        })
+        return JSONResponse(
+            content={
+                "status": "computed",
+                "user_id": user_id,
+                "week_start": week_start,
+                "digest_path": path,
+                "items": len(digest.items),
+                "total_processed": digest.total_items_processed,
+            }
+        )
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
 
 
 @router.get("/latest")
-def get_latest_digest(
-    user_id: str = Query(..., description="User email address")
-):
+def get_latest_digest(user_id: str = Query(..., description="User email address")):
     storage = get_storage()
     digest = storage.load_latest_digest(user_id)
 
     if not digest:
-        raise HTTPException(
-            status_code=404,
-            detail="No digest found. Run the pipeline first."
-        )
+        raise HTTPException(status_code=404, detail="No digest found. Run the pipeline first.")
 
     return JSONResponse(content=digest.model_dump())
 
 
 @router.get("/export")
 def export_digest(
-    user_id: str = Query(..., description="User email address"),
-    format: str = "markdown"
+    user_id: str = Query(..., description="User email address"), format: str = "markdown"
 ):
     storage = get_storage()
     digest = storage.load_latest_digest(user_id)
@@ -78,13 +88,13 @@ def export_digest(
 
     if format == "markdown":
         lines = [
-            f"# StackTwin Weekly Digest",
+            "# StackTwin Weekly Digest",
             f"**Week:** {digest.week_start}",
             f"**Developer:** {digest.profile_name}",
             f"**Articles processed:** {digest.total_items_processed}",
             "",
             "---",
-            ""
+            "",
         ]
 
         for i, item in enumerate(digest.items, 1):
@@ -114,11 +124,12 @@ def export_digest(
             content="\n".join(lines),
             media_type="text/markdown",
             headers={
-                "Content-Disposition": f"attachment; filename=stacktwin-digest-{digest.week_start}.md"
-            }
+                "Content-Disposition": (
+                    f"attachment; filename=stacktwin-digest-{digest.week_start}.md"
+                )
+            },
         )
 
     raise HTTPException(
-        status_code=400,
-        detail=f"Unsupported format: {format}. Supported: markdown"
+        status_code=400, detail=f"Unsupported format: {format}. Supported: markdown"
     )

@@ -1,0 +1,176 @@
+from urllib.parse import quote
+
+import orjson
+
+from stacktwin.profile.schema import DeveloperProfile, WeeklyDigest
+from stacktwin.storage.base import StorageBackend
+
+
+class NebiusS3Storage(StorageBackend):
+    """S3-compatible storage backed by Nebius Object Storage."""
+
+    def __init__(
+        self,
+        bucket: str,
+        endpoint_url: str,
+        region: str,
+        access_key_id: str,
+        secret_access_key: str,
+        prefix: str = "stacktwin",
+        client=None,
+    ):
+        self.bucket = bucket
+        self.prefix = prefix.strip("/")
+        self.client = client or self._create_client(
+            endpoint_url,
+            region,
+            access_key_id,
+            secret_access_key,
+        )
+
+    @staticmethod
+    def _create_client(endpoint_url, region, access_key_id, secret_access_key):
+        try:
+            import boto3
+            from botocore.client import Config
+        except ImportError as error:
+            raise RuntimeError(
+                "Nebius storage requires boto3. Install the project dependencies first."
+            ) from error
+
+        return boto3.client(
+            "s3",
+            endpoint_url=endpoint_url,
+            region_name=region,
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+            config=Config(
+                signature_version="s3v4",
+                retries={"max_attempts": 3, "mode": "standard"},
+                s3={"addressing_style": "path"},
+            ),
+        )
+
+    def _user_key(self, user_id: str) -> str:
+        return quote(user_id, safe="")
+
+    def _key(self, suffix: str) -> str:
+        return f"{self.prefix}/{suffix}" if self.prefix else suffix
+
+    def _profile_key(self, user_id: str) -> str:
+        return self._key(f"profiles/{self._user_key(user_id)}.json")
+
+    def _digest_key(self, user_id: str, week_start: str) -> str:
+        return self._key(f"digests/{self._user_key(user_id)}/{week_start}.json")
+
+    def _put_json(self, key: str, data: dict) -> None:
+        self.client.put_object(
+            Bucket=self.bucket,
+            Key=key,
+            Body=orjson.dumps(data),
+            ContentType="application/json",
+        )
+
+    def _get_json(self, key: str) -> dict | None:
+        try:
+            response = self.client.get_object(Bucket=self.bucket, Key=key)
+        except Exception as error:
+            if _is_not_found(error):
+                return None
+            raise
+        return orjson.loads(response["Body"].read())
+
+    def _exists(self, key: str) -> bool:
+        try:
+            self.client.head_object(Bucket=self.bucket, Key=key)
+            return True
+        except Exception as error:
+            if _is_not_found(error):
+                return False
+            raise
+
+    def save_profile(
+        self,
+        user_id: str,
+        profile: DeveloperProfile,
+        source_hash: str | None = None,
+    ) -> None:
+        self._put_json(
+            self._profile_key(user_id),
+            {
+                "profile": profile.model_dump(mode="json"),
+                "source_hash": source_hash,
+            },
+        )
+
+    def load_profile(self, user_id: str) -> DeveloperProfile | None:
+        data = self._get_json(self._profile_key(user_id))
+        if not data:
+            return None
+        return DeveloperProfile(**data.get("profile", data))
+
+    def load_profile_source_hash(self, user_id: str) -> str | None:
+        data = self._get_json(self._profile_key(user_id))
+        if not data or "profile" not in data:
+            return None
+        return data.get("source_hash")
+
+    def save_digest(self, user_id: str, digest: WeeklyDigest) -> str:
+        key = self._digest_key(user_id, digest.week_start)
+        self._put_json(key, digest.model_dump(mode="json"))
+        return f"s3://{self.bucket}/{key}"
+
+    def load_latest_digest(self, user_id: str) -> WeeklyDigest | None:
+        keys = self._digest_keys(user_id)
+        if not keys:
+            return None
+        data = self._get_json(keys[-1])
+        return WeeklyDigest(**data) if data else None
+
+    def load_digest_history(self, user_id: str) -> list[dict]:
+        history = []
+        for key in reversed(self._digest_keys(user_id)):
+            data = self._get_json(key)
+            if data:
+                history.append(
+                    {
+                        "week_start": data.get("week_start"),
+                        "generated_at": data.get("generated_at"),
+                        "items": len(data.get("items", [])),
+                        "total_processed": data.get("total_items_processed", 0),
+                    }
+                )
+        return history
+
+    def load_digest_by_week(self, user_id: str, week_start: str) -> WeeklyDigest | None:
+        data = self._get_json(self._digest_key(user_id, week_start))
+        return WeeklyDigest(**data) if data else None
+
+    def digest_exists(self, user_id: str, week_start: str) -> bool:
+        return self._exists(self._digest_key(user_id, week_start))
+
+    def _digest_keys(self, user_id: str) -> list[str]:
+        prefix = self._key(f"digests/{self._user_key(user_id)}/")
+        keys = []
+        continuation_token = None
+
+        while True:
+            request = {"Bucket": self.bucket, "Prefix": prefix}
+            if continuation_token:
+                request["ContinuationToken"] = continuation_token
+            response = self.client.list_objects_v2(**request)
+            keys.extend(
+                item["Key"]
+                for item in response.get("Contents", [])
+                if item["Key"].endswith(".json")
+            )
+            if not response.get("IsTruncated"):
+                break
+            continuation_token = response.get("NextContinuationToken")
+
+        return sorted(keys)
+
+
+def _is_not_found(error: Exception) -> bool:
+    response = getattr(error, "response", {})
+    return response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}

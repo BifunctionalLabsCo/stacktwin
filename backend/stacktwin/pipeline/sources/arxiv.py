@@ -3,7 +3,7 @@ import urllib.request
 import feedparser
 from datetime import datetime
 from stacktwin.pipeline.sources.base import BaseSource, Article
-
+import os
 
 # Configurable — add or remove categories here
 # Full list at https://arxiv.org/category_taxonomy
@@ -17,21 +17,21 @@ ARXIV_CATEGORIES = [
 
 ARXIV_FEED_URL = "https://rss.arxiv.org/rss/{category}"
 
-# SSL context — fixes certificate verification on Windows
-_SSL_CONTEXT = ssl.create_default_context()
-_SSL_CONTEXT.check_hostname = False
-_SSL_CONTEXT.verify_mode = ssl.CERT_NONE
-
 
 def _fetch_feed(url: str, timeout: int = 10) -> list:
     """
-    Fetch and parse an RSS feed with SSL bypass.
-    Returns list of feed entries or empty list on failure.
+    Fetch and parse an arXiv RSS feed.
+    Set ARXIV_SSL_VERIFY=false locally on Windows if certificate verification fails.
+    Default is verified — do not disable in production.
     """
     try:
-        opener = urllib.request.build_opener(
-            urllib.request.HTTPSHandler(context=_SSL_CONTEXT)
-        )
+        if os.getenv("ARXIV_SSL_VERIFY", "true").lower() != "true":
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
+        else:
+            opener = urllib.request.build_opener()
         response = opener.open(url, timeout=timeout)
         raw = response.read()
         feed = feedparser.parse(raw)

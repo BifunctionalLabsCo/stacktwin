@@ -2,7 +2,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 SourceType = Literal["hackernews", "arxiv", "devto", "github_trending", "youtube"]
 ModuleStatus = Literal["ready", "queued", "completed", "locked", "failed", "stale"]
 Difficulty = Literal["Focused", "Intermediate", "Advanced"]
@@ -52,6 +51,7 @@ class CheckpointResponse(BaseModel):
 class LessonModuleResponse(LearningModuleResponse):
     model_config = ConfigDict(populate_by_name=True)
 
+    track_id: str = Field(alias="trackId")
     context_brief: str = Field(alias="contextBrief")
     objectives: list[str]
     key_concepts: list[str] = Field(alias="keyConcepts")

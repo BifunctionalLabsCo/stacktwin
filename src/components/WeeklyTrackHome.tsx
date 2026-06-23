@@ -18,6 +18,8 @@ import {
   type WeeklyTrackState
 } from "../lib/weekly-track";
 import { applyCompletedProgress } from "../lib/progress";
+import { fetchProfileInfluence, type ProfileInfluence } from "../lib/classroom";
+import { ProfileInfluenceBand } from "./ProfileInfluenceBand";
 
 const statusMeta = {
   ready: { label: "Ready", Icon: CheckCircle2 },
@@ -30,6 +32,7 @@ const statusMeta = {
 
 export function WeeklyTrackHome() {
   const [state, setState] = useState<WeeklyTrackState>({ status: "loading" });
+  const [profile, setProfile] = useState<ProfileInfluence | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -41,6 +44,11 @@ export function WeeklyTrackHome() {
             ? { status: "ready", track: applyCompletedProgress(nextState.track) }
             : nextState
         );
+      }
+    });
+    fetchProfileInfluence().then((nextProfile) => {
+      if (active) {
+        setProfile(nextProfile);
       }
     });
 
@@ -109,6 +117,8 @@ export function WeeklyTrackHome() {
         <span>Updated {formatDate(track.generatedAt)}</span>
         <span>Source-backed learning cards</span>
       </section>
+
+      {profile && <ProfileInfluenceBand profile={profile} />}
 
       <section className="launchGrid" aria-label="Learning launch cards">
         {track.modules.map((module) => (

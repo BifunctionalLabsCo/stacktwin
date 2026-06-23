@@ -50,7 +50,7 @@ export function LessonPlayer({ moduleId }: { moduleId: string }) {
   const correct = selectedAnswer === lesson.checkpoint.answer;
 
   function completeLesson() {
-    markModuleComplete(lesson.id);
+    markModuleComplete(lesson.trackId, lesson.id);
     router.push("/");
   }
 

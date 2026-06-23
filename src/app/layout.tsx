@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ThemeToggle } from "../components/ThemeToggle";
+import { AppNav } from "../components/AppNav";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,9 +20,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>
-        <div style={{ position: "fixed", top: 16, right: 16, zIndex: 100 }}>
-          <ThemeToggle />
-        </div>
+        <AppNav />
         {children}
       </body>
     </html>

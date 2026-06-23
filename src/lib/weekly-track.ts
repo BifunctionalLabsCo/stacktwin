@@ -32,6 +32,7 @@ export type WeeklyTrackState =
   | { status: "ready"; track: WeeklyTrack };
 
 export type LessonModule = LearningModule & {
+  trackId: string;
   contextBrief: string;
   objectives: string[];
   keyConcepts: string[];

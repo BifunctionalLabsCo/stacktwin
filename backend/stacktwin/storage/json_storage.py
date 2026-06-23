@@ -1,5 +1,6 @@
 import json
 import os
+
 from stacktwin.profile.schema import DeveloperProfile, WeeklyDigest
 from stacktwin.storage.base import StorageBackend
 
@@ -35,12 +36,25 @@ class JSONStorage(StorageBackend):
         return os.path.join(self.profiles_dir, f"{self._safe_user_id(user_id)}_profile.json")
 
     def _digest_path(self, user_id: str, week_start: str) -> str:
-        return os.path.join(self.outputs_dir, f"{self._safe_user_id(user_id)}_digest_{week_start}.json")
+        filename = f"{self._safe_user_id(user_id)}_digest_{week_start}.json"
+        return os.path.join(self.outputs_dir, filename)
 
-    def save_profile(self, user_id: str, profile: DeveloperProfile) -> None:
+    def save_profile(
+        self,
+        user_id: str,
+        profile: DeveloperProfile,
+        source_hash: str | None = None,
+    ) -> None:
         path = self._profile_path(user_id)
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(profile.model_dump(), f, indent=2)
+            json.dump(
+                {
+                    "profile": profile.model_dump(mode="json"),
+                    "source_hash": source_hash,
+                },
+                f,
+                indent=2,
+            )
         print(f"[storage] profile saved: {path}")
 
     def load_profile(self, user_id: str) -> DeveloperProfile | None:
@@ -49,7 +63,16 @@ class JSONStorage(StorageBackend):
             return None
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-        return DeveloperProfile(**data)
+        profile_data = data.get("profile", data)
+        return DeveloperProfile(**profile_data)
+
+    def load_profile_source_hash(self, user_id: str) -> str | None:
+        path = self._profile_path(user_id)
+        if not os.path.exists(path):
+            return None
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("source_hash") if "profile" in data else None
 
     def save_digest(self, user_id: str, digest: WeeklyDigest) -> str:
         path = self._digest_path(user_id, digest.week_start)
@@ -60,10 +83,14 @@ class JSONStorage(StorageBackend):
 
     def load_latest_digest(self, user_id: str) -> WeeklyDigest | None:
         safe_id = self._safe_user_id(user_id)
-        files = sorted([
-            f for f in os.listdir(self.outputs_dir)
-            if f.startswith(f"{safe_id}_digest_") and f.endswith(".json")
-        ], reverse=True)
+        files = sorted(
+            [
+                f
+                for f in os.listdir(self.outputs_dir)
+                if f.startswith(f"{safe_id}_digest_") and f.endswith(".json")
+            ],
+            reverse=True,
+        )
 
         if not files:
             return None
@@ -74,21 +101,27 @@ class JSONStorage(StorageBackend):
 
     def load_digest_history(self, user_id: str) -> list[dict]:
         safe_id = self._safe_user_id(user_id)
-        files = sorted([
-            f for f in os.listdir(self.outputs_dir)
-            if f.startswith(f"{safe_id}_digest_") and f.endswith(".json")
-        ], reverse=True)
+        files = sorted(
+            [
+                f
+                for f in os.listdir(self.outputs_dir)
+                if f.startswith(f"{safe_id}_digest_") and f.endswith(".json")
+            ],
+            reverse=True,
+        )
 
         history = []
         for filename in files:
             with open(os.path.join(self.outputs_dir, filename), encoding="utf-8") as f:
                 data = json.load(f)
-                history.append({
-                    "week_start": data.get("week_start"),
-                    "generated_at": data.get("generated_at"),
-                    "items": len(data.get("items", [])),
-                    "total_processed": data.get("total_items_processed", 0)
-                })
+                history.append(
+                    {
+                        "week_start": data.get("week_start"),
+                        "generated_at": data.get("generated_at"),
+                        "items": len(data.get("items", [])),
+                        "total_processed": data.get("total_items_processed", 0),
+                    }
+                )
         return history
 
     def load_digest_by_week(self, user_id: str, week_start: str) -> WeeklyDigest | None:
@@ -98,3 +131,6 @@ class JSONStorage(StorageBackend):
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
         return WeeklyDigest(**data)
+
+    def digest_exists(self, user_id: str, week_start: str) -> bool:
+        return os.path.exists(self._digest_path(user_id, week_start))

@@ -1,22 +1,23 @@
-import os
 import json
+import os
+from datetime import UTC, datetime
+
 import httpx
-from datetime import datetime, UTC
+
 from stacktwin.pipeline.sources.base import Article
 from stacktwin.profile.schema import (
-    DeveloperProfile,
     ArticleScore,
+    DeveloperProfile,
     DigestItem,
     WeeklyDigest,
 )
-
 
 NEBIUS_API_URL = os.getenv("NEBIUS_API_URL", "https://api.studio.nebius.com/v1")
 NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY", "")
 MODEL = os.getenv("NEBIUS_MODEL", "meta-llama/Meta-Llama-3.1-70B-Instruct")
 
 DIGEST_SIZE = int(os.getenv("DIGEST_SIZE", "10"))  # articles in weekly digest
-QUIZ_COUNT = int(os.getenv("QUIZ_COUNT", "3"))      # articles to generate quizzes for
+QUIZ_COUNT = int(os.getenv("QUIZ_COUNT", "3"))  # articles to generate quizzes for
 
 
 SUMMARY_PROMPT = """
@@ -74,21 +75,15 @@ def _call_nebius(system_prompt: str, user_content: str) -> str | None:
         "temperature": 0.2,
         "messages": [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content}
-        ]
+            {"role": "user", "content": user_content},
+        ],
     }
 
-    headers = {
-        "Authorization": f"Bearer {NEBIUS_API_KEY}",
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": f"Bearer {NEBIUS_API_KEY}", "Content-Type": "application/json"}
 
     try:
         response = httpx.post(
-            f"{NEBIUS_API_URL}/chat/completions",
-            json=payload,
-            headers=headers,
-            timeout=30.0
+            f"{NEBIUS_API_URL}/chat/completions", json=payload, headers=headers, timeout=30.0
         )
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"].strip()
@@ -122,13 +117,13 @@ def _generate_summary(article: Article, profile: DeveloperProfile) -> dict:
     Falls back to article's existing summary if no API key.
     """
     user_content = f"""
-Developer stack: {', '.join(profile.current_stack)}
-Developer learning: {', '.join(profile.learning)}
-Career direction: {profile.career_direction or 'not specified'}
+Developer stack: {", ".join(profile.current_stack)}
+Developer learning: {", ".join(profile.learning)}
+Career direction: {profile.career_direction or "not specified"}
 
 Article title: {article.title}
-Article summary: {article.summary or 'no summary available'}
-Article tags: {', '.join(article.tags)}
+Article summary: {article.summary or "no summary available"}
+Article tags: {", ".join(article.tags)}
 Article source: {article.source}
 """.strip()
 
@@ -142,7 +137,7 @@ Article source: {article.source}
     return {
         "summary": article.summary or article.title,
         "why_this_matters": "Relevant to your current learning path",
-        "estimated_reading_minutes": 5
+        "estimated_reading_minutes": 5,
     }
 
 
@@ -166,6 +161,7 @@ def build_digest(
     profile: DeveloperProfile,
     top_n: int = DIGEST_SIZE,
     quiz_top_n: int = QUIZ_COUNT,
+    week_start: str | None = None,
 ) -> WeeklyDigest:
     """
     Build the weekly digest from scored articles.
@@ -194,26 +190,29 @@ def build_digest(
             print(f"[digest] generating quiz for: {article.title[:50]}")
             quiz = _generate_quiz(article, summary_data["summary"])
 
-        digest_items.append(DigestItem(
-            title=article.title,
-            url=article.url,
-            source=article.source,
-            summary=summary_data["summary"],
-            score=score,
-            estimated_reading_minutes=summary_data.get("estimated_reading_minutes", 5),
-            tags=article.tags,
-            quiz=quiz if quiz else []
-        ))
+        digest_items.append(
+            DigestItem(
+                title=article.title,
+                url=article.url,
+                source=article.source,
+                summary=summary_data["summary"],
+                score=score,
+                estimated_reading_minutes=summary_data.get("estimated_reading_minutes", 5),
+                tags=article.tags,
+                quiz=quiz if quiz else [],
+            )
+        )
 
     digest = WeeklyDigest(
-        week_start=datetime.now(UTC).strftime("%Y-%m-%d"),
+        week_start=week_start or datetime.now(UTC).strftime("%Y-%m-%d"),
         profile_name=profile.name,
         items=digest_items,
         total_items_processed=total_processed,
-        generated_at=datetime.now(UTC).isoformat()
+        generated_at=datetime.now(UTC).isoformat(),
     )
 
-    print(f"[digest] done — {len(digest_items)} items, {sum(1 for d in digest_items if d.quiz)} with quizzes")
+    quiz_count = sum(1 for item in digest_items if item.quiz)
+    print(f"[digest] done: {len(digest_items)} items, {quiz_count} with quizzes")
     return digest
 
 
@@ -227,12 +226,7 @@ def save_digest(digest: WeeklyDigest, output_dir: str = "outputs") -> str:
     filepath = os.path.join(output_dir, filename)
 
     with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(
-            digest.model_dump(),
-            f,
-            indent=2,
-            ensure_ascii=False
-        )
+        json.dump(digest.model_dump(), f, indent=2, ensure_ascii=False)
 
     print(f"[digest] saved to {filepath}")
     return filepath

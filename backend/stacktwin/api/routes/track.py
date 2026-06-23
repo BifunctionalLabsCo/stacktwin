@@ -1,10 +1,10 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
+
 from stacktwin.api.models import LessonModuleResponse, WeeklyTrackResponse
 from stacktwin.storage.factory import get_storage
-
 
 router = APIRouter()
 
@@ -40,7 +40,9 @@ LESSON_DETAILS = {
                 "Explaining an unfamiliar research result",
             ],
             "answer": "Validating that a response matches a JSON schema",
-            "explanation": "Schema validation is deterministic, testable, and should not consume a model call.",
+            "explanation": (
+                "Schema validation is deterministic, testable, and should not consume a model call."
+            ),
         },
         "takeaway": "Use models for judgment and software for guarantees.",
         "available_actions": ["explain_deeper", "adapt_difficulty", "regenerate_checkpoint"],
@@ -53,12 +55,12 @@ LESSON_DETAILS = {
         "objectives": [
             "Separate retrieval quality from answer quality.",
             "Choose a small evaluation set from real user questions.",
-            "Track evidence relevance before changing prompts."
+            "Track evidence relevance before changing prompts.",
         ],
         "key_concepts": [
             "Recall measures whether useful evidence was retrieved.",
             "Precision exposes distracting or irrelevant context.",
-            "A fixed evaluation set makes pipeline changes comparable."
+            "A fixed evaluation set makes pipeline changes comparable.",
         ],
         "exercise": {
             "title": "Create a ten-question evaluation set",
@@ -72,7 +74,7 @@ LESSON_DETAILS = {
             "options": [
                 "Whether retrieval returns relevant evidence",
                 "Whether the model temperature is higher",
-                "Whether the UI streams tokens"
+                "Whether the UI streams tokens",
             ],
             "answer": "Whether retrieval returns relevant evidence",
             "explanation": "More context does not repair missing or irrelevant retrieval results.",
@@ -88,12 +90,12 @@ LESSON_DETAILS = {
         "objectives": [
             "Identify the durable idea behind a repository trend.",
             "Inspect maintenance and adoption signals.",
-            "Write one practical experiment instead of bookmarking the repository."
+            "Write one practical experiment instead of bookmarking the repository.",
         ],
         "key_concepts": [
             "Stars indicate attention, not production readiness.",
             "Commit activity and issue quality reveal maintenance health.",
-            "A small local experiment produces more learning than passive collection."
+            "A small local experiment produces more learning than passive collection.",
         ],
         "exercise": {
             "title": "Run a repository viability scan",
@@ -107,10 +109,12 @@ LESSON_DETAILS = {
             "options": [
                 "A rapid increase in stars",
                 "Maintained releases and responsive issue handling",
-                "A polished social announcement"
+                "A polished social announcement",
             ],
             "answer": "Maintained releases and responsive issue handling",
-            "explanation": "Maintenance behavior is a stronger operational signal than attention alone.",
+            "explanation": (
+                "Maintenance behavior is a stronger operational signal than attention alone."
+            ),
         },
         "takeaway": "Translate attention into one testable engineering idea.",
         "available_actions": ["explain_deeper", "adapt_difficulty", "regenerate_checkpoint"],
@@ -123,12 +127,12 @@ LESSON_DETAILS = {
         "objectives": [
             "Extract claims instead of transcribing the video.",
             "Connect each claim to evidence or a source.",
-            "Turn one insight into a practical next action."
+            "Turn one insight into a practical next action.",
         ],
         "key_concepts": [
             "Active notes capture decisions and questions.",
             "Source links preserve provenance for later review.",
-            "A time box prevents passive learning from consuming the week."
+            "A time box prevents passive learning from consuming the week.",
         ],
         "exercise": {
             "title": "Create a five-line video brief",
@@ -142,10 +146,12 @@ LESSON_DETAILS = {
             "options": [
                 "It captures every spoken sentence",
                 "It ends with a specific experiment or decision",
-                "It uses several highlight colors"
+                "It uses several highlight colors",
             ],
             "answer": "It ends with a specific experiment or decision",
-            "explanation": "An explicit next action converts passive consumption into applied learning.",
+            "explanation": (
+                "An explicit next action converts passive consumption into applied learning."
+            ),
         },
         "takeaway": "Finish media with an action, not another item in the queue.",
         "available_actions": ["explain_deeper", "adapt_difficulty", "regenerate_checkpoint"],
@@ -157,10 +163,11 @@ LESSON_DETAILS = {
 def get_track_preview() -> WeeklyTrackResponse:
     """Return a small API-backed track for frontend integration testing."""
     now = datetime.now(UTC)
+    week_start = now.date() - timedelta(days=now.weekday())
 
     return WeeklyTrackResponse(
-        id=f"preview-{now.strftime('%Y-%m-%d')}",
-        week_label=f"Week of {now.strftime('%B')} {now.day}",
+        id=f"preview-{week_start.isoformat()}",
+        week_label=f"Week of {week_start.strftime('%B')} {week_start.day}",
         generated_at=now.isoformat(),
         learner_focus="Backend AI systems, retrieval quality, and practical agent workflows",
         weekly_time_budget_minutes=150,
@@ -257,44 +264,33 @@ def get_lesson_preview(module_id: str) -> LessonModuleResponse:
 
     module_index = next(index for index, item in enumerate(track.modules) if item.id == module_id)
     next_module_id = (
-        track.modules[module_index + 1].id
-        if module_index + 1 < len(track.modules)
-        else None
+        track.modules[module_index + 1].id if module_index + 1 < len(track.modules) else None
     )
 
     return LessonModuleResponse(
         **module.model_dump(),
         **details,
+        track_id=track.id,
         next_module_id=next_module_id,
     )
 
 
 @router.get("/history")
-def get_track_history(
-    user_id: str = Query(..., description="User email address")
-):
+def get_track_history(user_id: str = Query(..., description="User email address")):
     storage = get_storage()
     history = storage.load_digest_history(user_id)
 
-    return JSONResponse(content={
-        "user_id": user_id,
-        "weeks": history,
-        "total": len(history)
-    })
+    return JSONResponse(content={"user_id": user_id, "weeks": history, "total": len(history)})
 
 
 @router.get("/history/{week_start}")
-def get_week_digest(
-    week_start: str,
-    user_id: str = Query(..., description="User email address")
-):
+def get_week_digest(week_start: str, user_id: str = Query(..., description="User email address")):
     storage = get_storage()
     digest = storage.load_digest_by_week(user_id, week_start)
 
     if not digest:
         raise HTTPException(
-            status_code=404,
-            detail=f"No digest found for user {user_id} on week {week_start}"
+            status_code=404, detail=f"No digest found for user {user_id} on week {week_start}"
         )
 
     return JSONResponse(content=digest.model_dump())

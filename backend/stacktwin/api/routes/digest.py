@@ -19,14 +19,16 @@ def run_pipeline(user_id: str = Query(..., description="User email address")):
         today = datetime.now(UTC).date()
         week_start = (today - timedelta(days=today.weekday())).isoformat()
         existing_digest = storage.load_digest_by_week(user_id, week_start)
+        existing_track = storage.load_track_by_week(user_id, week_start)
 
-        if existing_digest:
+        if existing_digest and existing_track:
             return JSONResponse(
                 content={
                     "status": "digest-already-exists",
                     "user_id": user_id,
                     "week_start": week_start,
-                    "items": len(existing_digest.items),
+                    "track_id": existing_track.id,
+                    "items": len(existing_track.modules),
                     "total_processed": existing_digest.total_items_processed,
                 }
             )
@@ -38,6 +40,23 @@ def run_pipeline(user_id: str = Query(..., description="User email address")):
                 status_code=404, detail="No profile found for this user. Upload a CV first."
             )
 
+        from stacktwin.learning.builder import build_weekly_track
+
+        if existing_digest:
+            track = build_weekly_track(existing_digest, profile)
+            track_path = storage.save_track(user_id, track)
+            return JSONResponse(
+                content={
+                    "status": "track-backfilled",
+                    "user_id": user_id,
+                    "week_start": week_start,
+                    "track_id": track.id,
+                    "track_path": track_path,
+                    "items": len(track.modules),
+                    "total_processed": existing_digest.total_items_processed,
+                }
+            )
+
         from stacktwin.pipeline.digest import build_digest
         from stacktwin.pipeline.ingest import load_or_fetch
         from stacktwin.pipeline.score import score_articles
@@ -46,15 +65,19 @@ def run_pipeline(user_id: str = Query(..., description="User email address")):
         articles = load_or_fetch(limit_per_source=30)
         scored = score_articles(articles, profile)
         digest = build_digest(scored, profile, top_n=10, week_start=week_start)
-        path = storage.save_digest(user_id, digest)
+        digest_path = storage.save_digest(user_id, digest)
+        track = build_weekly_track(digest, profile)
+        track_path = storage.save_track(user_id, track)
 
         return JSONResponse(
             content={
                 "status": "computed",
                 "user_id": user_id,
                 "week_start": week_start,
-                "digest_path": path,
-                "items": len(digest.items),
+                "track_id": track.id,
+                "digest_path": digest_path,
+                "track_path": track_path,
+                "items": len(track.modules),
                 "total_processed": digest.total_items_processed,
             }
         )

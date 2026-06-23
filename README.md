@@ -38,9 +38,11 @@ The frontend is built into `src/out` and served by FastAPI. Backend routes shoul
 
 ## Classroom Experience
 
-The compiled app opens on the current weekly track. It includes lesson launch cards, a lesson player, progress scoped to the generated track, source provenance, and a compact explanation of which profile signals influenced the week. The archive at `/archive/` lists earlier tracks and opens their source-backed learning material inline.
+The compiled app opens on the learner's latest generated weekly track. It includes lesson launch cards, a lesson player, progress scoped to the generated track, source provenance, and a compact explanation of which profile signals influenced the week. The archive at `/archive/` lists earlier tracks and opens their source-backed learning material inline.
 
 Set `NEXT_PUBLIC_STACKTWIN_USER_ID` before `npm run build` to choose the learner whose profile and archive the static app requests. The default is `demo@stacktwin.dev`.
+
+The production classroom reads `GET /api/track/current` and week-scoped lesson routes. Set `NEXT_PUBLIC_STACKTWIN_DEMO_MODE=true` only when intentionally using the hardcoded preview fixture. Generated tracks are persisted separately from raw digests so current and archived weeks share one reusable learning-module contract.
 
 ## Storage And Idempotency
 

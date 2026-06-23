@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import pytest
 from dotenv import load_dotenv
+from stacktwin.learning.builder import build_weekly_track
 from stacktwin.profile.schema import (
     ArticleScore,
     DeveloperProfile,
@@ -94,6 +95,10 @@ def _digest(week_start: str = "2026-06-15") -> WeeklyDigest:
     )
 
 
+def _track(week_start: str = "2026-06-15"):
+    return build_weekly_track(_digest(week_start), _profile())
+
+
 @pytest.fixture(params=["json", "nebius"])
 def storage(request, tmp_path):
     if request.param == "json":
@@ -142,6 +147,27 @@ def test_digest_contract(storage):
     ]
 
 
+def test_weekly_track_contract(storage):
+    track = _track()
+
+    assert not storage.track_exists("ada@example.com", track.week_start)
+    path = storage.save_track("ada@example.com", track)
+
+    assert path
+    assert storage.track_exists("ada@example.com", track.week_start)
+    assert storage.load_track_by_week("ada@example.com", track.week_start) == track
+    assert storage.load_latest_track("ada@example.com") == track
+    assert storage.load_track_history("ada@example.com") == [
+        {
+            "track_id": track.id,
+            "week_start": track.week_start,
+            "generated_at": track.generated_at,
+            "modules": 1,
+            "planned_minutes": track.modules[0].estimated_minutes,
+        }
+    ]
+
+
 def test_json_storage_reads_legacy_profile(tmp_path):
     storage = JSONStorage(
         profiles_dir=str(tmp_path / "profiles"),
@@ -184,9 +210,11 @@ def test_live_nebius_storage_contract():
 
     storage.save_profile("live-test@example.com", _profile(), source_hash="live-hash")
     storage.save_digest("live-test@example.com", _digest())
+    storage.save_track("live-test@example.com", _track())
 
     assert storage.load_profile_source_hash("live-test@example.com") == "live-hash"
     assert storage.digest_exists("live-test@example.com", "2026-06-15")
+    assert storage.track_exists("live-test@example.com", "2026-06-15")
 
     response = storage.client.list_objects_v2(Bucket=storage.bucket, Prefix=f"{prefix}/")
     objects = [{"Key": item["Key"]} for item in response.get("Contents", [])]

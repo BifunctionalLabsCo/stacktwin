@@ -73,14 +73,20 @@ export function WeeklyTrackHome() {
     );
   }
 
-  if (state.status === "empty" || state.status === "error") {
+  if (state.status === "profile_required" || state.status === "empty" || state.status === "error") {
     return (
       <main className="shell">
         <HeaderShell />
         <section className={`statePanel ${state.status === "error" ? "isError" : ""}`}>
           <AlertCircle size={20} />
           <div>
-            <h2>{state.status === "empty" ? "No weekly track yet" : "Track unavailable"}</h2>
+            <h2>
+              {state.status === "profile_required"
+                ? "Developer profile required"
+                : state.status === "empty"
+                  ? "No weekly track yet"
+                  : "Track unavailable"}
+            </h2>
             <p>{state.message}</p>
           </div>
         </section>
@@ -122,7 +128,7 @@ export function WeeklyTrackHome() {
 
       <section className="launchGrid" aria-label="Learning launch cards">
         {track.modules.map((module) => (
-          <LaunchCard module={module} key={module.id} />
+          <LaunchCard module={module} weekStart={track.weekStart} key={module.id} />
         ))}
       </section>
     </main>
@@ -151,7 +157,7 @@ function HeaderShell() {
   );
 }
 
-function LaunchCard({ module }: { module: LearningModule }) {
+function LaunchCard({ module, weekStart }: { module: LearningModule; weekStart: string }) {
   const { Icon, label } = statusMeta[module.status];
   const isDisabled = module.status === "locked" || module.status === "failed";
 
@@ -190,7 +196,10 @@ function LaunchCard({ module }: { module: LearningModule }) {
             <ArrowRight size={18} />
           </button>
         ) : (
-          <Link href={`/lesson/${module.id}/`} aria-label={`Launch ${module.title}`}>
+          <Link
+            href={`/lesson/?week=${encodeURIComponent(weekStart)}&module=${encodeURIComponent(module.id)}`}
+            aria-label={`Launch ${module.title}`}
+          >
             <ArrowRight size={18} />
           </Link>
         )}

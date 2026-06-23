@@ -1,3 +1,5 @@
+import { getClassroomUserId, isDemoMode } from "./config";
+
 export type ModuleStatus = "ready" | "queued" | "completed" | "locked" | "failed" | "stale";
 
 export type SourceReference = {
@@ -18,6 +20,7 @@ export type LearningModule = {
 
 export type WeeklyTrack = {
   id: string;
+  weekStart: string;
   weekLabel: string;
   generatedAt: string;
   learnerFocus: string;
@@ -27,6 +30,7 @@ export type WeeklyTrack = {
 
 export type WeeklyTrackState =
   | { status: "loading" }
+  | { status: "profile_required"; message: string }
   | { status: "empty"; message: string }
   | { status: "error"; message: string }
   | { status: "ready"; track: WeeklyTrack };
@@ -58,11 +62,21 @@ export type LessonState =
 
 export async function fetchWeeklyTrackState(): Promise<WeeklyTrackState> {
   try {
-    const response = await fetch("/api/track/preview", {
+    const endpoint = isDemoMode()
+      ? "/api/track/preview"
+      : `/api/track/current?user_id=${encodeURIComponent(getClassroomUserId())}`;
+    const response = await fetch(endpoint, {
       headers: { Accept: "application/json" }
     });
 
     if (!response.ok) {
+      const payload = await readErrorPayload(response);
+      if (payload.code === "profile_required") {
+        return { status: "profile_required", message: payload.message };
+      }
+      if (payload.code === "track_not_ready") {
+        return { status: "empty", message: payload.message };
+      }
       return {
         status: "error",
         message: `The backend returned ${response.status} while loading this week's track.`
@@ -87,9 +101,17 @@ export async function fetchWeeklyTrackState(): Promise<WeeklyTrackState> {
   }
 }
 
-export async function fetchLessonState(moduleId: string): Promise<LessonState> {
+export async function fetchLessonState(
+  moduleId: string,
+  weekStart?: string,
+  demo = false
+): Promise<LessonState> {
   try {
-    const response = await fetch(`/api/track/preview/${encodeURIComponent(moduleId)}`, {
+    const endpoint = demo
+      ? `/api/track/preview/${encodeURIComponent(moduleId)}`
+      : `/api/track/${encodeURIComponent(weekStart ?? "")}/modules/${encodeURIComponent(moduleId)}`
+        + `?user_id=${encodeURIComponent(getClassroomUserId())}`;
+    const response = await fetch(endpoint, {
       headers: { Accept: "application/json" }
     });
 
@@ -109,6 +131,20 @@ export async function fetchLessonState(moduleId: string): Promise<LessonState> {
       status: "error",
       message: "The lesson API could not be reached."
     };
+  }
+}
+
+async function readErrorPayload(response: Response) {
+  try {
+    const payload = (await response.json()) as {
+      detail?: { code?: string; message?: string };
+    };
+    return {
+      code: payload.detail?.code ?? "unknown",
+      message: payload.detail?.message ?? "The weekly track could not be loaded."
+    };
+  } catch {
+    return { code: "unknown", message: "The weekly track could not be loaded." };
   }
 }
 

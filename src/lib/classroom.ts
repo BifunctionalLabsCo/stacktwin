@@ -1,3 +1,6 @@
+import type { WeeklyTrack } from "./weekly-track";
+import { getClassroomUserId } from "./config";
+
 export type ProfileInfluence = {
   name: string | null;
   currentRole: string | null;
@@ -7,31 +10,14 @@ export type ProfileInfluence = {
 };
 
 export type TrackHistoryItem = {
+  track_id: string;
   week_start: string;
   generated_at: string;
-  items: number;
-  total_processed: number;
+  modules: number;
+  planned_minutes: number;
 };
 
-export type DigestItem = {
-  title: string;
-  url: string;
-  source: string;
-  summary: string;
-  estimated_reading_minutes: number;
-  score: {
-    overall: number;
-    why_this_matters: string;
-  };
-};
-
-export type ArchivedDigest = {
-  week_start: string;
-  profile_name: string | null;
-  items: DigestItem[];
-  total_items_processed: number;
-  generated_at: string;
-};
+export type ArchivedTrack = WeeklyTrack;
 
 type ProfilePayload = {
   name?: string | null;
@@ -40,10 +26,6 @@ type ProfilePayload = {
   learning?: string[];
   career_direction?: string | null;
 };
-
-export function getClassroomUserId() {
-  return process.env.NEXT_PUBLIC_STACKTWIN_USER_ID ?? "demo@stacktwin.dev";
-}
 
 export async function fetchProfileInfluence(): Promise<ProfileInfluence | null> {
   const response = await fetch(
@@ -75,7 +57,7 @@ export async function fetchTrackHistory(): Promise<TrackHistoryItem[]> {
   return payload.weeks;
 }
 
-export async function fetchArchivedDigest(weekStart: string): Promise<ArchivedDigest> {
+export async function fetchArchivedTrack(weekStart: string): Promise<ArchivedTrack> {
   const response = await fetch(
     `/api/track/history/${encodeURIComponent(weekStart)}?user_id=${encodeURIComponent(getClassroomUserId())}`,
     { headers: { Accept: "application/json" } }
@@ -83,5 +65,5 @@ export async function fetchArchivedDigest(weekStart: string): Promise<ArchivedDi
   if (!response.ok) {
     throw new Error(`Archived digest request failed with ${response.status}`);
   }
-  return (await response.json()) as ArchivedDigest;
+  return (await response.json()) as ArchivedTrack;
 }

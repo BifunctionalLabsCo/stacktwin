@@ -1,6 +1,7 @@
 import json
 import os
 
+from stacktwin.learning.schema import WeeklyTrack
 from stacktwin.profile.schema import DeveloperProfile, WeeklyDigest
 from stacktwin.storage.base import StorageBackend
 
@@ -37,6 +38,10 @@ class JSONStorage(StorageBackend):
 
     def _digest_path(self, user_id: str, week_start: str) -> str:
         filename = f"{self._safe_user_id(user_id)}_digest_{week_start}.json"
+        return os.path.join(self.outputs_dir, filename)
+
+    def _track_path(self, user_id: str, week_start: str) -> str:
+        filename = f"{self._safe_user_id(user_id)}_track_{week_start}.json"
         return os.path.join(self.outputs_dir, filename)
 
     def save_profile(
@@ -134,3 +139,57 @@ class JSONStorage(StorageBackend):
 
     def digest_exists(self, user_id: str, week_start: str) -> bool:
         return os.path.exists(self._digest_path(user_id, week_start))
+
+    def save_track(self, user_id: str, track: WeeklyTrack) -> str:
+        path = self._track_path(user_id, track.week_start)
+        with open(path, "w", encoding="utf-8") as track_file:
+            json.dump(track.model_dump(mode="json"), track_file, indent=2, ensure_ascii=False)
+        print(f"[storage] track saved: {path}")
+        return path
+
+    def load_latest_track(self, user_id: str) -> WeeklyTrack | None:
+        files = self._track_files(user_id)
+        if not files:
+            return None
+        with open(os.path.join(self.outputs_dir, files[0]), encoding="utf-8") as track_file:
+            return WeeklyTrack(**json.load(track_file))
+
+    def load_track_history(self, user_id: str) -> list[dict]:
+        history = []
+        for filename in self._track_files(user_id):
+            with open(os.path.join(self.outputs_dir, filename), encoding="utf-8") as track_file:
+                data = json.load(track_file)
+            modules = data.get("modules", [])
+            history.append(
+                {
+                    "track_id": data.get("id"),
+                    "week_start": data.get("week_start"),
+                    "generated_at": data.get("generated_at"),
+                    "modules": len(modules),
+                    "planned_minutes": sum(
+                        module.get("estimated_minutes", 0) for module in modules
+                    ),
+                }
+            )
+        return history
+
+    def load_track_by_week(self, user_id: str, week_start: str) -> WeeklyTrack | None:
+        path = self._track_path(user_id, week_start)
+        if not os.path.exists(path):
+            return None
+        with open(path, encoding="utf-8") as track_file:
+            return WeeklyTrack(**json.load(track_file))
+
+    def track_exists(self, user_id: str, week_start: str) -> bool:
+        return os.path.exists(self._track_path(user_id, week_start))
+
+    def _track_files(self, user_id: str) -> list[str]:
+        prefix = f"{self._safe_user_id(user_id)}_track_"
+        return sorted(
+            [
+                filename
+                for filename in os.listdir(self.outputs_dir)
+                if filename.startswith(prefix) and filename.endswith(".json")
+            ],
+            reverse=True,
+        )

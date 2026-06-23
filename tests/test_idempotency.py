@@ -68,7 +68,7 @@ def test_changed_profile_content_invalidates_hash(monkeypatch, tmp_path):
     assert responses[0].json()["source_hash"] != responses[1].json()["source_hash"]
 
 
-def test_existing_weekly_digest_skips_pipeline(monkeypatch, tmp_path):
+def test_existing_weekly_digest_backfills_track_without_pipeline(monkeypatch, tmp_path):
     storage = JSONStorage(
         profiles_dir=str(tmp_path / "profiles"),
         outputs_dir=str(tmp_path / "outputs"),
@@ -83,7 +83,10 @@ def test_existing_weekly_digest_skips_pipeline(monkeypatch, tmp_path):
     monkeypatch.setattr(digest_routes, "get_storage", lambda: storage)
 
     response = client.post("/api/digest/run?user_id=ada@example.com")
+    repeated = client.post("/api/digest/run?user_id=ada@example.com")
 
     assert response.status_code == 200
-    assert response.json()["status"] == "digest-already-exists"
+    assert response.json()["status"] == "track-backfilled"
     assert response.json()["week_start"] == week_start
+    assert storage.track_exists("ada@example.com", week_start)
+    assert repeated.json()["status"] == "digest-already-exists"

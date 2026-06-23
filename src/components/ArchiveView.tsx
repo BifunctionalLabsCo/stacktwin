@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowUpRight, BookOpen, CalendarDays, Clock } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, ArrowUpRight, BookOpen, CalendarDays, Clock } from "lucide-react";
 import {
-  fetchArchivedDigest,
+  fetchArchivedTrack,
   fetchTrackHistory,
-  type ArchivedDigest,
+  type ArchivedTrack,
   type TrackHistoryItem
 } from "../lib/classroom";
 
@@ -17,7 +18,7 @@ type ArchiveState =
 
 export function ArchiveView() {
   const [state, setState] = useState<ArchiveState>({ status: "loading" });
-  const [selected, setSelected] = useState<ArchivedDigest | null>(null);
+  const [selected, setSelected] = useState<ArchivedTrack | null>(null);
   const [detailStatus, setDetailStatus] = useState<"idle" | "loading" | "error">("idle");
 
   useEffect(() => {
@@ -29,7 +30,7 @@ export function ArchiveView() {
   async function openWeek(weekStart: string) {
     setDetailStatus("loading");
     try {
-      setSelected(await fetchArchivedDigest(weekStart));
+      setSelected(await fetchArchivedTrack(weekStart));
       setDetailStatus("idle");
     } catch {
       setDetailStatus("error");
@@ -49,7 +50,7 @@ export function ArchiveView() {
       {state.status === "ready" && state.weeks.length === 0 && (
         <div className="archiveState">
           <BookOpen size={20} />
-          <div><strong>No previous weeks yet</strong><p>Your first completed weekly digest will appear here.</p></div>
+          <div><strong>No previous weeks yet</strong><p>Your first generated weekly track will appear here.</p></div>
         </div>
       )}
 
@@ -61,11 +62,11 @@ export function ArchiveView() {
                 type="button"
                 key={week.week_start}
                 onClick={() => openWeek(week.week_start)}
-                aria-pressed={selected?.week_start === week.week_start}
+                aria-pressed={selected?.weekStart === week.week_start}
               >
                 <CalendarDays size={18} />
-                <span><strong>{formatWeek(week.week_start)}</strong>{week.items} modules</span>
-                <small>{week.total_processed} signals</small>
+                <span><strong>{formatWeek(week.week_start)}</strong>{week.modules} modules</span>
+                <small>{week.planned_minutes} min planned</small>
               </button>
             ))}
           </section>
@@ -79,17 +80,31 @@ export function ArchiveView() {
             {detailStatus === "idle" && selected && (
               <>
                 <div className="archiveDetailHeader">
-                  <div><span>Week of</span><h2>{formatWeek(selected.week_start)}</h2></div>
-                  <small>{selected.items.length} modules</small>
+                  <div><span>Week of</span><h2>{formatWeek(selected.weekStart)}</h2></div>
+                  <small>{selected.modules.length} modules</small>
                 </div>
                 <div className="archiveItems">
-                  {selected.items.map((item) => (
-                    <article key={item.url}>
-                      <div><span>{item.source}</span><span><Clock size={14} /> {item.estimated_reading_minutes} min</span></div>
-                      <h3>{item.title}</h3>
-                      <p>{item.summary}</p>
-                      <blockquote>{item.score.why_this_matters}</blockquote>
-                      <a href={item.url} target="_blank" rel="noreferrer">Open source <ArrowUpRight size={15} /></a>
+                  {selected.modules.map((module) => (
+                    <article key={module.id}>
+                      <div>
+                        <span>{module.difficulty}</span>
+                        <span><Clock size={14} /> {module.estimatedMinutes} min</span>
+                      </div>
+                      <h3>{module.title}</h3>
+                      <p>{module.personalizationReason}</p>
+                      <div className="archiveItemActions">
+                        <Link
+                          href={`/lesson/?week=${encodeURIComponent(selected.weekStart)}`
+                            + `&module=${encodeURIComponent(module.id)}`}
+                        >
+                          Open lesson <ArrowRight size={15} />
+                        </Link>
+                        {module.sourceHints[0] && (
+                          <a href={module.sourceHints[0].url} target="_blank" rel="noreferrer">
+                            Source <ArrowUpRight size={15} />
+                          </a>
+                        )}
+                      </div>
                     </article>
                   ))}
                 </div>

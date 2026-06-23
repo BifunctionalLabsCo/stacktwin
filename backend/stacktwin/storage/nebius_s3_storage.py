@@ -2,6 +2,7 @@ from urllib.parse import quote
 
 import orjson
 
+from stacktwin.learning.schema import WeeklyTrack
 from stacktwin.profile.schema import DeveloperProfile, WeeklyDigest
 from stacktwin.storage.base import StorageBackend
 
@@ -62,6 +63,9 @@ class NebiusS3Storage(StorageBackend):
 
     def _digest_key(self, user_id: str, week_start: str) -> str:
         return self._key(f"digests/{self._user_key(user_id)}/{week_start}.json")
+
+    def _track_key(self, user_id: str, week_start: str) -> str:
+        return self._key(f"tracks/{self._user_key(user_id)}/{week_start}.json")
 
     def _put_json(self, key: str, data: dict) -> None:
         self.client.put_object(
@@ -149,8 +153,53 @@ class NebiusS3Storage(StorageBackend):
     def digest_exists(self, user_id: str, week_start: str) -> bool:
         return self._exists(self._digest_key(user_id, week_start))
 
+    def save_track(self, user_id: str, track: WeeklyTrack) -> str:
+        key = self._track_key(user_id, track.week_start)
+        self._put_json(key, track.model_dump(mode="json"))
+        return f"s3://{self.bucket}/{key}"
+
+    def load_latest_track(self, user_id: str) -> WeeklyTrack | None:
+        keys = self._track_keys(user_id)
+        if not keys:
+            return None
+        data = self._get_json(keys[-1])
+        return WeeklyTrack(**data) if data else None
+
+    def load_track_history(self, user_id: str) -> list[dict]:
+        history = []
+        for key in reversed(self._track_keys(user_id)):
+            data = self._get_json(key)
+            if not data:
+                continue
+            modules = data.get("modules", [])
+            history.append(
+                {
+                    "track_id": data.get("id"),
+                    "week_start": data.get("week_start"),
+                    "generated_at": data.get("generated_at"),
+                    "modules": len(modules),
+                    "planned_minutes": sum(
+                        module.get("estimated_minutes", 0) for module in modules
+                    ),
+                }
+            )
+        return history
+
+    def load_track_by_week(self, user_id: str, week_start: str) -> WeeklyTrack | None:
+        data = self._get_json(self._track_key(user_id, week_start))
+        return WeeklyTrack(**data) if data else None
+
+    def track_exists(self, user_id: str, week_start: str) -> bool:
+        return self._exists(self._track_key(user_id, week_start))
+
     def _digest_keys(self, user_id: str) -> list[str]:
-        prefix = self._key(f"digests/{self._user_key(user_id)}/")
+        return self._object_keys("digests", user_id)
+
+    def _track_keys(self, user_id: str) -> list[str]:
+        return self._object_keys("tracks", user_id)
+
+    def _object_keys(self, collection: str, user_id: str) -> list[str]:
+        prefix = self._key(f"{collection}/{self._user_key(user_id)}/")
         keys = []
         continuation_token = None
 

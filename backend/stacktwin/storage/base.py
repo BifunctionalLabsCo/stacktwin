@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+from stacktwin.learning.schema import WeeklyTrack
 from stacktwin.profile.schema import DeveloperProfile, WeeklyDigest
 
 
@@ -54,4 +55,29 @@ class StorageBackend(ABC):
     @abstractmethod
     def digest_exists(self, user_id: str, week_start: str) -> bool:
         """Return whether a completed digest already exists for the user and week."""
+        pass
+
+    @abstractmethod
+    def save_track(self, user_id: str, track: WeeklyTrack) -> str:
+        """Save a generated weekly classroom track and return its storage location."""
+        pass
+
+    @abstractmethod
+    def load_latest_track(self, user_id: str) -> WeeklyTrack | None:
+        """Load the most recent generated classroom track."""
+        pass
+
+    @abstractmethod
+    def load_track_history(self, user_id: str) -> list[dict]:
+        """Load summaries for the user's generated tracks."""
+        pass
+
+    @abstractmethod
+    def load_track_by_week(self, user_id: str, week_start: str) -> WeeklyTrack | None:
+        """Load a generated classroom track for a specific week."""
+        pass
+
+    @abstractmethod
+    def track_exists(self, user_id: str, week_start: str) -> bool:
+        """Return whether a classroom track exists for the user and week."""
         pass

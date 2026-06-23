@@ -8,13 +8,15 @@ Difficulty = Literal["Focused", "Intermediate", "Advanced"]
 
 
 class SourceReferenceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     title: str
     source: SourceType
     url: str
 
 
 class LearningModuleResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
     id: str
     title: str
@@ -26,9 +28,10 @@ class LearningModuleResponse(BaseModel):
 
 
 class WeeklyTrackResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
     id: str
+    week_start: str = Field(alias="weekStart")
     week_label: str = Field(alias="weekLabel")
     generated_at: str = Field(alias="generatedAt")
     learner_focus: str = Field(alias="learnerFocus")
@@ -37,11 +40,15 @@ class WeeklyTrackResponse(BaseModel):
 
 
 class ExerciseResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     title: str
     instructions: str
 
 
 class CheckpointResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     question: str
     options: list[str]
     answer: str
@@ -49,7 +56,7 @@ class CheckpointResponse(BaseModel):
 
 
 class LessonModuleResponse(LearningModuleResponse):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
     track_id: str = Field(alias="trackId")
     context_brief: str = Field(alias="contextBrief")

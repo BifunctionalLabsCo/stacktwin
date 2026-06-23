@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from stacktwin.api.models import LessonModuleResponse, WeeklyTrackResponse
+from stacktwin.learning.schema import LearningModule, WeeklyTrack
 from stacktwin.storage.factory import get_storage
 
 router = APIRouter()
@@ -167,6 +168,7 @@ def get_track_preview() -> WeeklyTrackResponse:
 
     return WeeklyTrackResponse(
         id=f"preview-{week_start.isoformat()}",
+        week_start=week_start.isoformat(),
         week_label=f"Week of {week_start.strftime('%B')} {week_start.day}",
         generated_at=now.isoformat(),
         learner_focus="Backend AI systems, retrieval quality, and practical agent workflows",
@@ -275,10 +277,56 @@ def get_lesson_preview(module_id: str) -> LessonModuleResponse:
     )
 
 
+@router.get("/current", response_model=WeeklyTrackResponse)
+def get_current_track(user_id: str = Query(..., description="User email address")):
+    storage = get_storage()
+    if not storage.load_profile(user_id):
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "profile_required",
+                "message": "Create a developer profile before generating a weekly track.",
+            },
+        )
+
+    today = datetime.now(UTC).date()
+    week_start = (today - timedelta(days=today.weekday())).isoformat()
+    track = storage.load_track_by_week(user_id, week_start)
+    if not track:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "track_not_ready",
+                "message": "No generated weekly track is ready for this learner.",
+            },
+        )
+    return WeeklyTrackResponse.model_validate(track, from_attributes=True)
+
+
+@router.get(
+    "/{week_start}/modules/{module_id}",
+    response_model=LessonModuleResponse,
+)
+def get_track_lesson(
+    week_start: str,
+    module_id: str,
+    user_id: str = Query(..., description="User email address"),
+):
+    storage = get_storage()
+    track = storage.load_track_by_week(user_id, week_start)
+    if not track:
+        raise HTTPException(status_code=404, detail="This weekly track could not be found.")
+
+    module = next((item for item in track.modules if item.id == module_id), None)
+    if not module:
+        raise HTTPException(status_code=404, detail="This lesson could not be found.")
+    return _lesson_response(track, module)
+
+
 @router.get("/history")
 def get_track_history(user_id: str = Query(..., description="User email address")):
     storage = get_storage()
-    history = storage.load_digest_history(user_id)
+    history = storage.load_track_history(user_id)
 
     return JSONResponse(content={"user_id": user_id, "weeks": history, "total": len(history)})
 
@@ -286,11 +334,23 @@ def get_track_history(user_id: str = Query(..., description="User email address"
 @router.get("/history/{week_start}")
 def get_week_digest(week_start: str, user_id: str = Query(..., description="User email address")):
     storage = get_storage()
-    digest = storage.load_digest_by_week(user_id, week_start)
+    track = storage.load_track_by_week(user_id, week_start)
 
-    if not digest:
+    if not track:
         raise HTTPException(
-            status_code=404, detail=f"No digest found for user {user_id} on week {week_start}"
+            status_code=404, detail=f"No track found for user {user_id} on week {week_start}"
         )
 
-    return JSONResponse(content=digest.model_dump())
+    return WeeklyTrackResponse.model_validate(track, from_attributes=True)
+
+
+def _lesson_response(track: WeeklyTrack, module: LearningModule) -> LessonModuleResponse:
+    module_index = next(index for index, item in enumerate(track.modules) if item.id == module.id)
+    next_module_id = (
+        track.modules[module_index + 1].id if module_index + 1 < len(track.modules) else None
+    )
+    return LessonModuleResponse(
+        **module.model_dump(),
+        track_id=track.id,
+        next_module_id=next_module_id,
+    )

@@ -8,7 +8,15 @@ import { markModuleComplete } from "../lib/progress";
 import { fetchLessonState, type LessonState } from "../lib/weekly-track";
 
 
-export function LessonPlayer({ moduleId }: { moduleId: string }) {
+export function LessonPlayer({
+  moduleId,
+  weekStart,
+  demo = false
+}: {
+  moduleId: string;
+  weekStart?: string;
+  demo?: boolean;
+}) {
   const router = useRouter();
   const [state, setState] = useState<LessonState>({ status: "loading" });
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
@@ -16,7 +24,7 @@ export function LessonPlayer({ moduleId }: { moduleId: string }) {
 
   useEffect(() => {
     let active = true;
-    fetchLessonState(moduleId).then((nextState) => {
+    fetchLessonState(moduleId, weekStart, demo).then((nextState) => {
       if (active) {
         setState(nextState);
       }
@@ -24,7 +32,7 @@ export function LessonPlayer({ moduleId }: { moduleId: string }) {
     return () => {
       active = false;
     };
-  }, [moduleId]);
+  }, [demo, moduleId, weekStart]);
 
   if (state.status === "loading") {
     return (
@@ -127,7 +135,15 @@ export function LessonPlayer({ moduleId }: { moduleId: string }) {
               <Check size={18} /> Mark complete
             </button>
             {lesson.nextModuleId && (
-              <Link className="secondaryLink" href={`/lesson/${lesson.nextModuleId}/`}>
+              <Link
+                className="secondaryLink"
+                href={
+                  demo
+                    ? `/lesson/${lesson.nextModuleId}/`
+                    : `/lesson/?week=${encodeURIComponent(weekStart ?? "")}`
+                      + `&module=${encodeURIComponent(lesson.nextModuleId)}`
+                }
+              >
                 Next lesson <ArrowRight size={16} />
               </Link>
             )}

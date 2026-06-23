@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+import hashlib
 
 
 def extract_text_from_pdf(file_path: str) -> str:
@@ -52,3 +53,11 @@ def _clean_text(text: str) -> str:
     text = re.sub(r'\s+', ' ', text)
     text = re.sub(r'[^\x20-\x7E\n]', '', text)
     return text.strip()
+
+def hash_cv_content(content: bytes) -> str:
+    """
+    Stable hash of raw CV file bytes.
+    Same file uploaded twice produces the same hash, regardless of filename.
+    Used to detect identical re-uploads and skip redundant Nebius calls.
+    """
+    return hashlib.sha256(content).hexdigest()[:16]

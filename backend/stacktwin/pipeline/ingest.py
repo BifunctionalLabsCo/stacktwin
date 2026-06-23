@@ -65,11 +65,59 @@ def save_articles(articles: list[Article], output_dir: str = "outputs") -> str:
     print(f"[ingest] saved to {filepath}")
     return filepath
 
+def cleanup_raw_cache(cache_dir: str = "outputs", keep_days: int = 0) -> list[str]:
+    """
+    Remove raw article cache files older than keep_days.
+    Called after a digest has been successfully generated from
+    that day's articles — the raw cache is no longer needed once
+    the digest exists.
 
+    keep_days=0 means delete any article cache file from before today.
+    Digest files (digest_*.json) and profile files are never touched —
+    only files matching articles_*.json.
+    """
+    if not os.path.exists(cache_dir):
+        return []
+
+    today = datetime.now(UTC).strftime("%Y%m%d")
+    removed = []
+
+    for filename in os.listdir(cache_dir):
+        if not filename.startswith("articles_") or not filename.endswith(".json"):
+            continue
+
+        # Extract date portion: articles_20260618_172737.json -> 20260618
+        try:
+            file_date = filename.split("_")[1]
+        except IndexError:
+            continue
+
+        # Skip today's cache if keep_days=0 means "keep today, clean older"
+        if keep_days == 0 and file_date == today:
+            continue
+
+        filepath = os.path.join(cache_dir, filename)
+        try:
+            os.remove(filepath)
+            removed.append(filename)
+            print(f"[cleanup] removed raw cache: {filename}")
+        except Exception as e:
+            print(f"[cleanup] failed to remove {filename}: {e}")
+
+    if removed:
+        print(f"[cleanup] removed {len(removed)} raw cache file(s)")
+    else:
+        print("[cleanup] nothing to remove")
+
+    return removed
+
+    
 if __name__ == "__main__":
     articles = fetch_all(limit_per_source=30)
     path = save_articles(articles)
     print(f"\nDone. {len(articles)} articles saved to {path}")
+
+
 
 def load_or_fetch(limit_per_source: int = 50, cache_dir: str = "outputs") -> list[Article]:
     """

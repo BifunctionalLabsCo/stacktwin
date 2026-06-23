@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, UTC
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse, PlainTextResponse
 from stacktwin.storage.factory import get_storage
@@ -7,13 +8,20 @@ from stacktwin.storage.factory import get_storage
 router = APIRouter()
 
 
+def _current_week_start() -> str:
+    """Returns today's date as the week identifier — matches digest.py's format."""
+    return datetime.now(UTC).strftime("%Y-%m-%d")
+
+
 @router.post("/run")
 def run_pipeline(
     user_id: str = Query(..., description="User email address")
 ):
     """
     Trigger the full pipeline for a specific user.
-    Uses today's article cache if available — skips re-fetching.
+    Idempotent — if a digest already exists for this user and week,
+    returns it directly instead of recomputing. Prevents double work
+    if the job is retried after a crash or called twice accidentally.
     """
     try:
         storage = get_storage()
@@ -25,18 +33,31 @@ def run_pipeline(
                 detail="No profile found for this user. Upload a CV first."
             )
 
-        from stacktwin.pipeline.ingest import load_or_fetch
+        week_start = _current_week_start()
+        existing_digest = storage.load_digest_by_week(user_id, week_start)
+
+        if existing_digest:
+            return JSONResponse(content={
+                "status": "digest_already_exists",
+                "user_id": user_id,
+                "week_start": week_start,
+                "items": len(existing_digest.items),
+                "total_processed": existing_digest.total_items_processed
+            })
+
+        from stacktwin.pipeline.ingest import load_or_fetch, cleanup_raw_cache
         from stacktwin.pipeline.score import score_articles
         from stacktwin.pipeline.digest import build_digest
 
         print(f"[pipeline] running for user: {user_id}")
         articles = load_or_fetch(limit_per_source=30)
-        scored = score_articles(articles, profile)
+        scored = score_articles(articles, profile, user_id=user_id)
         digest = build_digest(scored, profile, top_n=10)
         path = storage.save_digest(user_id, digest)
+        cleanup_raw_cache(cache_dir=os.getenv("OUTPUTS_DIR", "outputs"))
 
         return JSONResponse(content={
-            "status": "ok",
+            "status": "computed",
             "user_id": user_id,
             "digest_path": path,
             "items": len(digest.items),

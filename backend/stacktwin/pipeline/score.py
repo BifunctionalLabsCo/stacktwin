@@ -4,7 +4,6 @@ import httpx
 from stacktwin.pipeline.sources.base import Article
 from stacktwin.profile.schema import DeveloperProfile, ArticleScore
 
-
 NEBIUS_API_URL = os.getenv("NEBIUS_API_URL", "https://api.studio.nebius.com/v1")
 NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY", "")
 MODEL = os.getenv("NEBIUS_MODEL", "meta-llama/Meta-Llama-3.1-70B-Instruct")
@@ -60,6 +59,19 @@ Topics to avoid: {', '.join(profile.topics_to_avoid) or 'none'}
 
 
 def _build_article_summary(article: Article) -> str:
+    # Hacker News provides no description — only title and upvote score.
+    # Give the LLM explicit context so it scores based on title + community signal,
+    # rather than penalizing the article for a missing summary.
+    if article.source == "hackernews" and not article.summary:
+        return f"""
+Title: {article.title}
+Source: Hacker News (community-curated tech discussion)
+URL: {article.url}
+Note: No article summary available from this source — score based on title
+relevance and community signal. This article reached {article.score} upvotes,
+indicating it was widely read and discussed by developers.
+""".strip()
+
     return f"""
 Title: {article.title}
 Source: {article.source}
@@ -91,11 +103,17 @@ def _stub_score(article: Article) -> ArticleScore:
     )
 
 
-def score_article(article: Article, profile: DeveloperProfile) -> ArticleScore:
+def score_article(article: Article, profile: DeveloperProfile, user_id: str = "default") -> ArticleScore:
     """
     Score a single article against a developer profile.
     Calls Nebius Endpoint and returns a structured ArticleScore.
     Falls back to stub score if API key is not configured.
+
+    Note: no per-article caching here — the digest idempotency check
+    (storage.load_digest_by_week) already prevents redundant scoring
+    for the same user and week. A per-article cache added complexity
+    without real production value once the pipeline runs on a true
+    weekly cadence — see NOTES.md.
     """
     if not NEBIUS_API_KEY:
         return _stub_score(article)
@@ -155,7 +173,8 @@ def score_article(article: Article, profile: DeveloperProfile) -> ArticleScore:
 def score_articles(
     articles: list[Article],
     profile: DeveloperProfile,
-    min_overall: float = 0.3
+    min_overall: float = 0.3,
+    user_id: str = "default"
 ) -> list[tuple[Article, ArticleScore]]:
     """
     Score all articles against a profile.
@@ -167,10 +186,10 @@ def score_articles(
 
     for i, article in enumerate(articles):
         print(f"[score] {i + 1}/{total} — {article.title[:50]}")
-        score = score_article(article, profile)
-
+        score = score_article(article, profile, user_id=user_id)
         if score.overall >= min_overall:
             results.append((article, score))
+
 
     # Sort best first
     results.sort(key=lambda x: x[1].overall, reverse=True)

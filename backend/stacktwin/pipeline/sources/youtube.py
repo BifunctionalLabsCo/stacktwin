@@ -91,9 +91,14 @@ class YouTubeSource(BaseSource):
         articles = []
         seen_urls = set()
         per_channel = max(1, limit // len(self.channels))
+        failed_channels = []
 
         for channel_name, channel_id in self.channels:
             entries = _fetch_channel_rss(channel_id)
+
+            if not entries:
+                failed_channels.append(channel_name)
+                continue
 
             count = 0
             for entry in entries:
@@ -108,6 +113,7 @@ class YouTubeSource(BaseSource):
                 summary = self._clean_description(entry.get("summary", ""))
                 if not summary:
                     summary = f"Video by {channel_name}"
+
                 articles.append(Article(
                     title=entry.get("title", ""),
                     url=video_url,
@@ -119,7 +125,16 @@ class YouTubeSource(BaseSource):
                 ))
                 count += 1
 
-        self._status = f"ok:rss:{len(articles)}_articles"
+        active = len(self.channels) - len(failed_channels)
+        if failed_channels:
+            self._status = (
+                f"degraded:{active}/{len(self.channels)}_channels"
+                f":{len(articles)}_articles"
+                f":failed={','.join(failed_channels)}"
+            )
+        else:
+            self._status = f"ok:rss:{active}_channels:{len(articles)}_articles"
+
         return articles[:limit]
 
     def _fetch_via_api(self, limit: int) -> list[Article]:
@@ -131,8 +146,8 @@ class YouTubeSource(BaseSource):
 
         articles = []
         seen_urls = set()
+        failed_queries = []
 
-        # Build search queries from channel names
         queries = [name for name, _ in self.channels]
 
         for query in queries:
@@ -175,10 +190,19 @@ class YouTubeSource(BaseSource):
 
             except Exception as e:
                 print(f"[YouTube] API failed for query '{query}': {e}")
-                self._status = f"degraded:api_error"
+                failed_queries.append(query)
                 continue
 
-        self._status = f"ok:api:{len(articles)}_articles"
+        active = len(queries) - len(failed_queries)
+        if failed_queries:
+            self._status = (
+                f"degraded:api:{active}/{len(queries)}_queries"
+                f":{len(articles)}_articles"
+                f":failed={','.join(failed_queries)}"
+            )
+        else:
+            self._status = f"ok:api:{active}_queries:{len(articles)}_articles"
+
         return articles[:limit]
 
     def _clean_description(self, text: str) -> str:

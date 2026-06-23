@@ -6,12 +6,21 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from stacktwin.api.routes import profile, digest, track
+from fastapi.middleware.cors import CORSMiddleware
 
 
 app = FastAPI(
     title="StackTwin API",
     description="Personalised weekly learning intelligence for developers",
     version="0.1.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Register routes

@@ -45,6 +45,7 @@ class DeveloperProfile(BaseModel):
     # Source
     profile_source: Optional[str] = None  # "cv", "linkedin", "manual"
     raw_text: Optional[str] = None        # original extracted text kept for re-processing
+    cv_hash: Optional[str] = None  # hash of the uploaded CV bytes
 
 
 class ArticleScore(BaseModel):

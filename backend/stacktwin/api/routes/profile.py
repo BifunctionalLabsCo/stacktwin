@@ -3,6 +3,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Query
 from fastapi.responses import JSONResponse
 from stacktwin.profile.schema import DeveloperProfile
 from stacktwin.storage.factory import get_storage
+from stacktwin.profile.extractor import hash_cv_content
 
 
 router = APIRouter()
@@ -18,8 +19,21 @@ async def upload_profile(
 
     try:
         content = await file.read()
-        temp_path = f"temp_{file.filename}"
+        cv_hash = hash_cv_content(content)
 
+        storage = get_storage()
+
+        # Check for an existing profile with the same CV hash
+        existing_profile = storage.load_profile(user_id)
+        if existing_profile and existing_profile.cv_hash == cv_hash:
+            return JSONResponse(content={
+                "status": "profile_cache_hit",
+                "user_id": user_id,
+                "profile": existing_profile.model_dump()
+            })
+
+        # New or changed CV — extract fresh
+        temp_path = f"temp_{file.filename}"
         with open(temp_path, "wb") as f:
             f.write(content)
 
@@ -45,11 +59,11 @@ async def upload_profile(
                 raw_text=raw_text[:500]
             )
 
-        storage = get_storage()
+        profile.cv_hash = cv_hash
         storage.save_profile(user_id, profile)
 
         return JSONResponse(content={
-            "status": "ok",
+            "status": "computed",
             "user_id": user_id,
             "profile": profile.model_dump()
         })

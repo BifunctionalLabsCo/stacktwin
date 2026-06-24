@@ -13,7 +13,7 @@ SOURCES = [
     HackerNewsSource(),
     ArxivSource(),
     DevToSource(),
-    GitHubTrendingSource(),
+    #GitHubTrendingSource(),
     YouTubeSource(),
 ]
 

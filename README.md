@@ -36,6 +36,28 @@ uv run uvicorn stacktwin.api.main:app --app-dir backend --reload
 
 The frontend is built into `src/out` and served by FastAPI. Backend routes should stay focused on triggering or observing serverless jobs, profile extraction, ingestion, scoring, and module generation.
 
+## Sources
+
+The default ingestion run uses four keyless sources that require no OAuth token, paid tier, or expiring credential:
+
+- **Hacker News** — top stories via the public Firebase API
+- **arXiv** — recent papers via public RSS feeds across five computer science categories
+- **Dev.to** — top weekly articles via the public REST API
+- **YouTube** — recent videos from curated developer channels via public RSS feeds, no API key required
+
+GitHub Trending is commented out of the default registry. It scrapes HTML and may break if GitHub changes its page structure. Uncomment `GitHubTrendingSource()` in `backend/stacktwin/pipeline/ingest.py` to enable it locally.
+
+**Windows SSL compatibility.** arXiv and YouTube RSS use Python's `urllib` to fetch RSS feeds. On Windows, the system certificate store may cause SSL verification failures. Set the following in your local `.env` to bypass verification:
+
+ARXIV_SSL_VERIFY=false
+
+YOUTUBE_SSL_VERIFY=false
+
+Do not set these in production. The default (`true`) enforces SSL verification in every deployed environment.
+
+**Degraded source behavior.** Each source is isolated — a single source failure does not stop the pipeline. Every source reports a status string after each fetch: `ok:…` for success, `degraded:…` for partial results, and `failed:…` for no results. The pipeline continues with whichever sources succeed and can generate a weekly track from partial output.
+
+
 ## Classroom Experience
 
 The compiled app opens on the learner's latest generated weekly track. It includes lesson launch cards, a lesson player, progress scoped to the generated track, source provenance, and a compact explanation of which profile signals influenced the week. The archive at `/archive/` lists earlier tracks and opens their source-backed learning material inline.

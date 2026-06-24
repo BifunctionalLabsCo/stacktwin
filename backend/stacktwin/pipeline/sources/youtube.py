@@ -4,6 +4,7 @@ import urllib.request
 import feedparser
 from stacktwin.pipeline.sources.base import BaseSource, Article
 import re
+import requests
 
 
 # Curated developer YouTube channels
@@ -20,22 +21,18 @@ DEFAULT_CHANNELS = [
 YOUTUBE_RSS_URL = "https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
 YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/search"
 
-# SSL context for Windows
-_SSL_CONTEXT = ssl.create_default_context()
-_SSL_CONTEXT.check_hostname = False
-_SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 
 
 def _fetch_channel_rss(channel_id: str, timeout: int = 10) -> list:
-    """
-    Fetch latest videos for a channel via YouTube RSS feed.
-    No API key required. Safe default.
-    """
     try:
         url = YOUTUBE_RSS_URL.format(channel_id=channel_id)
-        opener = urllib.request.build_opener(
-            urllib.request.HTTPSHandler(context=_SSL_CONTEXT)
-        )
+        if os.getenv("YOUTUBE_SSL_VERIFY", "true").lower() != "true":
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
+        else:
+            opener = urllib.request.build_opener()
         response = opener.open(url, timeout=timeout)
         raw = response.read()
         feed = feedparser.parse(raw)
@@ -91,20 +88,21 @@ class YouTubeSource(BaseSource):
         articles = []
         seen_urls = set()
         per_channel = max(1, limit // len(self.channels))
+        channel_errors = 0
 
         for channel_name, channel_id in self.channels:
             entries = _fetch_channel_rss(channel_id)
+            if not entries:
+                channel_errors += 1
 
             count = 0
             for entry in entries:
                 if count >= per_channel:
                     break
-
                 video_url = entry.get("link", "")
                 if not video_url or video_url in seen_urls:
                     continue
                 seen_urls.add(video_url)
-
                 summary = self._clean_description(entry.get("summary", ""))
                 if not summary:
                     summary = f"Video by {channel_name}"
@@ -115,11 +113,16 @@ class YouTubeSource(BaseSource):
                     summary=summary,
                     tags=[channel_name, "video"],
                     published_at=entry.get("published", ""),
-                    score=0
+                    score=0,
                 ))
                 count += 1
 
-        self._status = f"ok:rss:{len(articles)}_articles"
+        if not articles:
+            self._status = f"failed:rss:all_{len(self.channels)}_channels_failed"
+        elif channel_errors:
+            self._status = f"degraded:rss:{len(articles)}_articles,{channel_errors}_channels_failed"
+        else:
+            self._status = f"ok:rss:{len(articles)}_articles"
         return articles[:limit]
 
     def _fetch_via_api(self, limit: int) -> list[Article]:
@@ -131,23 +134,21 @@ class YouTubeSource(BaseSource):
 
         articles = []
         seen_urls = set()
+        channel_errors = 0
 
-        # Build search queries from channel names
-        queries = [name for name, _ in self.channels]
-
-        for query in queries:
+        for channel_name, channel_id in self.channels:
             try:
                 response = requests.get(
                     YOUTUBE_API_URL,
                     params={
                         "part": "snippet",
-                        "q": query,
+                        "q": channel_name,
                         "type": "video",
                         "maxResults": self.max_results,
                         "order": "date",
                         "key": self.api_key,
                     },
-                    timeout=10
+                    timeout=10,
                 )
                 response.raise_for_status()
                 items = response.json().get("items", [])
@@ -156,12 +157,10 @@ class YouTubeSource(BaseSource):
                     video_id = item.get("id", {}).get("videoId", "")
                     if not video_id:
                         continue
-
                     video_url = f"https://www.youtube.com/watch?v={video_id}"
                     if video_url in seen_urls:
                         continue
                     seen_urls.add(video_url)
-
                     snippet = item.get("snippet", {})
                     articles.append(Article(
                         title=snippet.get("title", ""),
@@ -170,15 +169,20 @@ class YouTubeSource(BaseSource):
                         summary=snippet.get("description", "")[:300],
                         tags=[snippet.get("channelTitle", ""), "video"],
                         published_at=snippet.get("publishedAt", ""),
-                        score=0
+                        score=0,
                     ))
 
             except Exception as e:
-                print(f"[YouTube] API failed for query '{query}': {e}")
-                self._status = f"degraded:api_error"
+                print(f"[YouTube] API failed for channel '{channel_name}': {e}")
+                channel_errors += 1
                 continue
 
-        self._status = f"ok:api:{len(articles)}_articles"
+        if not articles and channel_errors:
+            self._status = "failed:api:all_channels_failed"
+        elif channel_errors:
+            self._status = f"degraded:api:{len(articles)}_articles,{channel_errors}_channels_failed"
+        else:
+            self._status = f"ok:api:{len(articles)}_articles"
         return articles[:limit]
 
     def _clean_description(self, text: str) -> str:

@@ -5,6 +5,7 @@ from uuid import uuid4
 import pytest
 from dotenv import load_dotenv
 from stacktwin.learning.builder import build_weekly_track
+from stacktwin.pipeline.run import PipelineRun, SourceRunStatus
 from stacktwin.profile.schema import (
     ArticleScore,
     DeveloperProfile,
@@ -99,6 +100,26 @@ def _track(week_start: str = "2026-06-15"):
     return build_weekly_track(_digest(week_start), _profile())
 
 
+def _run(
+    run_id: str = "run-1",
+    user_id: str = "ada@example.com",
+    target_week: str = "2026-06-15",
+    created_at: str = "2026-06-15T08:00:00+00:00",
+    status: str = "running",
+) -> PipelineRun:
+    return PipelineRun(
+        run_id=run_id,
+        user_id=user_id,
+        target_week=target_week,
+        trigger_type="manual",
+        status=status,
+        current_stage="queued",
+        attempt_number=1,
+        created_at=created_at,
+        updated_at=created_at,
+    )
+
+
 @pytest.fixture(params=["json", "nebius"])
 def storage(request, tmp_path):
     if request.param == "json":
@@ -166,6 +187,62 @@ def test_weekly_track_contract(storage):
             "planned_minutes": track.modules[0].estimated_minutes,
         }
     ]
+
+
+def test_run_contract_create_and_load_latest(storage):
+    assert storage.load_latest_run("ada@example.com") is None
+    assert storage.load_run_history("ada@example.com") == []
+
+    run = _run()
+    storage.save_run(run)
+
+    loaded = storage.load_latest_run("ada@example.com")
+    assert loaded is not None
+    assert loaded.run_id == run.run_id
+    assert loaded.status == "running"
+
+
+def test_run_contract_stage_transition_updates_in_place(storage):
+    run = _run()
+    storage.save_run(run)
+
+    run.current_stage = "ingesting"
+    run.sources = [SourceRunStatus(source="devto", status="ok", fetched_count=5, duration_ms=120)]
+    storage.save_run(run)
+
+    loaded = storage.load_latest_run("ada@example.com")
+    assert loaded.current_stage == "ingesting"
+    assert loaded.sources == [
+        SourceRunStatus(source="devto", status="ok", fetched_count=5, duration_ms=120)
+    ]
+
+    history = storage.load_run_history("ada@example.com")
+    assert len(history) == 1
+    assert history[0].run_id == run.run_id
+
+
+def test_run_contract_history_is_bounded_and_newest_first(storage):
+    older = _run(run_id="run-older", created_at="2026-06-08T08:00:00+00:00")
+    newer = _run(run_id="run-newer", created_at="2026-06-15T08:00:00+00:00")
+    storage.save_run(older)
+    storage.save_run(newer)
+
+    history = storage.load_run_history("ada@example.com", limit=1)
+    assert len(history) == 1
+    assert history[0].run_id == "run-newer"
+
+    full_history = storage.load_run_history("ada@example.com")
+    assert [run.run_id for run in full_history] == ["run-newer", "run-older"]
+    assert storage.load_latest_run("ada@example.com").run_id == "run-newer"
+
+
+def test_run_contract_isolates_users(storage):
+    storage.save_run(_run(run_id="run-ada", user_id="ada@example.com"))
+    storage.save_run(_run(run_id="run-bo", user_id="bo@example.com"))
+
+    assert storage.load_latest_run("ada@example.com").run_id == "run-ada"
+    assert storage.load_latest_run("bo@example.com").run_id == "run-bo"
+    assert [r.run_id for r in storage.load_run_history("ada@example.com")] == ["run-ada"]
 
 
 def test_json_storage_reads_legacy_profile(tmp_path):

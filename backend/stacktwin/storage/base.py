@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 
 from stacktwin.learning.schema import WeeklyTrack
+from stacktwin.pipeline.run import PipelineRun
 from stacktwin.profile.schema import DeveloperProfile, WeeklyDigest
 
 
@@ -80,4 +81,19 @@ class StorageBackend(ABC):
     @abstractmethod
     def track_exists(self, user_id: str, week_start: str) -> bool:
         """Return whether a classroom track exists for the user and week."""
+        pass
+
+    @abstractmethod
+    def save_run(self, run: PipelineRun) -> None:
+        """Create or update a durable pipeline run record."""
+        pass
+
+    @abstractmethod
+    def load_latest_run(self, user_id: str) -> PipelineRun | None:
+        """Load the most recently created/updated run for a user. None if none exist."""
+        pass
+
+    @abstractmethod
+    def load_run_history(self, user_id: str, limit: int = 20) -> list[PipelineRun]:
+        """Load the most recent runs for a user, newest first, bounded by limit."""
         pass

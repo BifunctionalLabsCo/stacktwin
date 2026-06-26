@@ -2,8 +2,13 @@ import json
 import os
 
 from stacktwin.learning.schema import WeeklyTrack
+from stacktwin.pipeline.run import PipelineRun
 from stacktwin.profile.schema import DeveloperProfile, WeeklyDigest
 from stacktwin.storage.base import StorageBackend
+
+# Runs kept per user in the JSON backend. Older runs are dropped on write
+# so a single user's run history file cannot grow without bound.
+MAX_STORED_RUNS_PER_USER = 100
 
 
 class JSONStorage(StorageBackend):
@@ -42,6 +47,10 @@ class JSONStorage(StorageBackend):
 
     def _track_path(self, user_id: str, week_start: str) -> str:
         filename = f"{self._safe_user_id(user_id)}_track_{week_start}.json"
+        return os.path.join(self.outputs_dir, filename)
+
+    def _runs_path(self, user_id: str) -> str:
+        filename = f"{self._safe_user_id(user_id)}_runs.json"
         return os.path.join(self.outputs_dir, filename)
 
     def save_profile(
@@ -182,6 +191,33 @@ class JSONStorage(StorageBackend):
 
     def track_exists(self, user_id: str, week_start: str) -> bool:
         return os.path.exists(self._track_path(user_id, week_start))
+
+    def save_run(self, run: PipelineRun) -> None:
+        path = self._runs_path(run.user_id)
+        runs = self._load_runs(run.user_id)
+        runs = [r for r in runs if r.run_id != run.run_id]
+        runs.append(run)
+        runs.sort(key=lambda r: r.created_at, reverse=True)
+        runs = runs[:MAX_STORED_RUNS_PER_USER]
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump([r.model_dump(mode="json") for r in runs], f, indent=2, ensure_ascii=False)
+
+    def load_latest_run(self, user_id: str) -> PipelineRun | None:
+        runs = self._load_runs(user_id)
+        return runs[0] if runs else None
+
+    def load_run_history(self, user_id: str, limit: int = 20) -> list[PipelineRun]:
+        return self._load_runs(user_id)[:limit]
+
+    def _load_runs(self, user_id: str) -> list[PipelineRun]:
+        path = self._runs_path(user_id)
+        if not os.path.exists(path):
+            return []
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        runs = [PipelineRun(**item) for item in data]
+        runs.sort(key=lambda r: r.created_at, reverse=True)
+        return runs
 
     def _track_files(self, user_id: str) -> list[str]:
         prefix = f"{self._safe_user_id(user_id)}_track_"

@@ -3,6 +3,7 @@ from urllib.parse import quote
 import orjson
 
 from stacktwin.learning.schema import WeeklyTrack
+from stacktwin.pipeline.run import PipelineRun
 from stacktwin.profile.schema import DeveloperProfile, WeeklyDigest
 from stacktwin.storage.base import StorageBackend
 
@@ -66,6 +67,10 @@ class NebiusS3Storage(StorageBackend):
 
     def _track_key(self, user_id: str, week_start: str) -> str:
         return self._key(f"tracks/{self._user_key(user_id)}/{week_start}.json")
+
+    def _run_key(self, user_id: str, run: PipelineRun) -> str:
+        # created_at first so lexicographic key sort matches chronological order.
+        return self._key(f"runs/{self._user_key(user_id)}/{run.created_at}_{run.run_id}.json")
 
     def _put_json(self, key: str, data: dict) -> None:
         self.client.put_object(
@@ -191,6 +196,40 @@ class NebiusS3Storage(StorageBackend):
 
     def track_exists(self, user_id: str, week_start: str) -> bool:
         return self._exists(self._track_key(user_id, week_start))
+
+    def save_run(self, run: PipelineRun) -> None:
+        # Run records are immutable per attempt at a given created_at, but a
+        # run is mutated in place across stage transitions, so look up its
+        # existing key by run_id before writing rather than assuming a fixed key.
+        existing_key = self._find_run_key(run.user_id, run.run_id)
+        key = existing_key or self._run_key(run.user_id, run)
+        self._put_json(key, run.model_dump(mode="json"))
+
+    def load_latest_run(self, user_id: str) -> PipelineRun | None:
+        keys = self._run_keys(user_id)
+        if not keys:
+            return None
+        data = self._get_json(keys[-1])
+        return PipelineRun(**data) if data else None
+
+    def load_run_history(self, user_id: str, limit: int = 20) -> list[PipelineRun]:
+        runs = []
+        for key in reversed(self._run_keys(user_id)):
+            if len(runs) >= limit:
+                break
+            data = self._get_json(key)
+            if data:
+                runs.append(PipelineRun(**data))
+        return runs
+
+    def _find_run_key(self, user_id: str, run_id: str) -> str | None:
+        for key in self._run_keys(user_id):
+            if key.endswith(f"_{run_id}.json"):
+                return key
+        return None
+
+    def _run_keys(self, user_id: str) -> list[str]:
+        return self._object_keys("runs", user_id)
 
     def _digest_keys(self, user_id: str) -> list[str]:
         return self._object_keys("digests", user_id)

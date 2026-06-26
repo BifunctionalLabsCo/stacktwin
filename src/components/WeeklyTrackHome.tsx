@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   ArrowRight,
@@ -31,6 +32,7 @@ const statusMeta = {
 };
 
 export function WeeklyTrackHome() {
+  const router = useRouter();
   const [state, setState] = useState<WeeklyTrackState>({ status: "loading" });
   const [profile, setProfile] = useState<ProfileInfluence | null>(null);
 
@@ -38,13 +40,18 @@ export function WeeklyTrackHome() {
     let active = true;
 
     fetchWeeklyTrackState().then((nextState) => {
-      if (active) {
-        setState(
-          nextState.status === "ready"
-            ? { status: "ready", track: applyCompletedProgress(nextState.track) }
-            : nextState
-        );
+      if (!active) {
+        return;
       }
+      if (nextState.status === "profile_required") {
+        router.replace("/onboarding/");
+        return;
+      }
+      setState(
+        nextState.status === "ready"
+          ? { status: "ready", track: applyCompletedProgress(nextState.track) }
+          : nextState
+      );
     });
     fetchProfileInfluence().then((nextProfile) => {
       if (active) {

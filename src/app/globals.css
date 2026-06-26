@@ -836,12 +836,145 @@ h1 {
   color: var(--muted);
 }
 
+.onboardingShell {
+  width: min(880px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 40px 0 72px;
+}
+
+.onboardingHeader {
+  grid-template-columns: 1fr;
+  padding-bottom: 18px;
+}
+
+.onboardingHeader .eyebrow {
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.onboardingChoices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.onboardingCard {
+  display: grid;
+  gap: 10px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+}
+
+.onboardingCard:hover {
+  border-color: var(--accent);
+}
+
+.onboardingCard h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.onboardingCard p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.privacyNote {
+  margin: 4px 0 20px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.reviewForm {
+  display: grid;
+  gap: 24px;
+}
+
+.reviewGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.reviewFieldWide {
+  grid-column: 1 / -1;
+}
+
+.reviewGrid label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.reviewGrid input,
+.reviewGrid select {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.reviewGrid fieldset {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+}
+
+.reviewGrid legend {
+  padding: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.formatOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.formatOption {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
 @media (max-width: 860px) {
   .header,
   .launchGrid,
   .lessonLayout,
   .archiveLayout,
-  .influenceBand {
+  .influenceBand,
+  .onboardingChoices,
+  .reviewGrid {
     grid-template-columns: 1fr;
   }
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Archive, CalendarDays } from "lucide-react";
+import { Archive, CalendarDays, UserCircle } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 
 
@@ -23,6 +23,12 @@ export function AppNav() {
           aria-current={pathname.startsWith("/archive") ? "page" : undefined}
         >
           <Archive size={16} /> Archive
+        </Link>
+        <Link
+          href="/profile/"
+          aria-current={pathname.startsWith("/profile") ? "page" : undefined}
+        >
+          <UserCircle size={16} /> Profile
         </Link>
       </nav>
       <ThemeToggle />

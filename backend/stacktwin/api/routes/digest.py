@@ -4,6 +4,8 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from stacktwin.storage.factory import get_storage
+from stacktwin.pipeline.digest import DIGEST_SIZE, build_digest
+from stacktwin.pipeline.ingest import SOURCE_LIMIT, load_or_fetch
 
 router = APIRouter()
 
@@ -62,9 +64,9 @@ def run_pipeline(user_id: str = Query(..., description="User email address")):
         from stacktwin.pipeline.score import score_articles
 
         print(f"[pipeline] running for user: {user_id}")
-        articles = load_or_fetch(limit_per_source=30)
+        articles = load_or_fetch(limit_per_source=SOURCE_LIMIT)
         scored = score_articles(articles, profile)
-        digest = build_digest(scored, profile, top_n=10, week_start=week_start)
+        digest = build_digest(scored, profile, top_n=DIGEST_SIZE, week_start=week_start)
         digest_path = storage.save_digest(user_id, digest)
         track = build_weekly_track(digest, profile)
         track_path = storage.save_track(user_id, track)

@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, UTC
+from datetime import datetime, timedelta, UTC
 from stacktwin.pipeline.sources.base import Article
 from stacktwin.pipeline.sources.hackernews import HackerNewsSource
 from stacktwin.pipeline.sources.arxiv import ArxivSource
@@ -8,6 +8,8 @@ from stacktwin.pipeline.sources.devto import DevToSource
 from stacktwin.pipeline.sources.github_trending import GitHubTrendingSource
 from stacktwin.pipeline.sources.youtube import YouTubeSource
 
+
+SOURCE_LIMIT = int(os.getenv("SOURCE_LIMIT", "50"))
 # Registry: add new sources here, nothing else changes.
 SOURCES = [
     HackerNewsSource(),
@@ -73,33 +75,44 @@ if __name__ == "__main__":
 
 def load_or_fetch(limit_per_source: int = 50, cache_dir: str = "outputs") -> list[Article]:
     """
-    Load today's article cache if it exists, otherwise fetch fresh.
-    
+    Load this week's article cache if it exists, otherwise fetch fresh.
+
+    Cache is keyed by Monday of the current week.
     This means:
-    - First run of the day: fetches all sources, saves cache
-    - Subsequent runs same day: loads cache, skips network calls
-    - Next day: fetches fresh again
-    
+    - First run on or after Monday with no existing cache: fetches fresh
+    - All subsequent runs that week: loads the Monday cache
+    - Following Monday: no cache exists yet, fetches fresh again
+
     Cache file pattern: outputs/articles_YYYYMMDD_*.json
     """
-    today = datetime.now(UTC).strftime("%Y%m%d")
-    
-    # Check if today's cache exists
+    today = datetime.now(UTC)
+    week_monday = (today - timedelta(days=today.weekday())).strftime("%Y%m%d")
+
     if os.path.exists(cache_dir):
-        today_files = sorted([
+        week_files = sorted([
             f for f in os.listdir(cache_dir)
-            if f.startswith(f"articles_{today}") and f.endswith(".json")
+            if f.startswith(f"articles_{week_monday}") and f.endswith(".json")
         ], reverse=True)
-        
-        if today_files:
-            cache_path = os.path.join(cache_dir, today_files[0])
+
+        if week_files:
+            cache_path = os.path.join(cache_dir, week_files[0])
             print(f"[ingest] cache hit — loading {cache_path}")
             with open(cache_path, encoding="utf-8") as f:
                 raw = json.load(f)
-            # Convert dicts back to Article objects
             articles = [Article(**item) for item in raw]
             print(f"[ingest] loaded {len(articles)} articles from cache")
             return articles
+
+    print(f"[ingest] no cache for week of {week_monday} — fetching fresh")
+    articles = fetch_all(limit_per_source=limit_per_source)
+
+    os.makedirs(cache_dir, exist_ok=True)
+    filename = f"articles_{week_monday}_{datetime.now(UTC).strftime('%H%M%S')}.json"
+    filepath = os.path.join(cache_dir, filename)
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump([a.to_dict() for a in articles], f, indent=2, ensure_ascii=False)
+    print(f"[ingest] saved to {filepath}")
+    return articles
     
     # No cache for today — fetch fresh
     print("[ingest] no cache for today — fetching fresh")

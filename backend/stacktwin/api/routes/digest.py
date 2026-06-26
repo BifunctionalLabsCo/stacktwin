@@ -13,6 +13,10 @@ from stacktwin.pipeline.run import (
     sanitize_failure_summary,
 )
 from stacktwin.storage.factory import get_storage
+from stacktwin.pipeline.digest import DIGEST_SIZE, build_digest
+from stacktwin.pipeline.ingest import SOURCE_LIMIT, load_or_fetch, load_or_build_tag_index
+from stacktwin.pipeline.score import filter_by_tags, score_articles
+from stacktwin.learning.builder import build_weekly_track
 
 router = APIRouter()
 
@@ -100,8 +104,6 @@ def run_pipeline(user_id: str = Query(..., description="User email address")):
                 status_code=404, detail="No profile found for this user. Upload a CV first."
             )
 
-        from stacktwin.learning.builder import build_weekly_track
-
         if existing_digest:
             _transition(storage, run, "generating")
             track = build_weekly_track(existing_digest, profile)
@@ -122,23 +124,21 @@ def run_pipeline(user_id: str = Query(..., description="User email address")):
                 }
             )
 
-        from stacktwin.pipeline.digest import build_digest
-        from stacktwin.pipeline.ingest import load_or_fetch
-        from stacktwin.pipeline.score import score_articles
-
         _transition(storage, run, "ingesting")
         ingest_started = time.monotonic()
-        articles = load_or_fetch(limit_per_source=30)
+        articles = load_or_fetch(limit_per_source=SOURCE_LIMIT)
         ingest_duration_ms = int((time.monotonic() - ingest_started) * 1000)
         run.sources = _summarize_sources(articles, ingest_duration_ms)
         storage.save_run(run)
         _log(run.run_id, "ingesting", f"fetched {len(articles)} articles total")
 
         _transition(storage, run, "scoring")
-        scored = score_articles(articles, profile)
+        tag_index = load_or_build_tag_index(articles)
+        filtered = filter_by_tags(articles, profile, tag_index)
+        scored = score_articles(filtered, profile)
 
         _transition(storage, run, "generating")
-        digest = build_digest(scored, profile, top_n=10, week_start=week_start)
+        digest = build_digest(scored, profile, top_n=DIGEST_SIZE, week_start=week_start)
 
         _transition(storage, run, "persisting")
         digest_path = storage.save_digest(user_id, digest)

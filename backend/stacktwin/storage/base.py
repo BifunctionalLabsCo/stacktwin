@@ -97,3 +97,30 @@ class StorageBackend(ABC):
     def load_run_history(self, user_id: str, limit: int = 20) -> list[PipelineRun]:
         """Load the most recent runs for a user, newest first, bounded by limit."""
         pass
+
+    @abstractmethod
+    def save_scored_article(self, user_id: str, week_start: str, url: str, data: dict) -> None:
+        """
+        Persist a single scored article for resumable pipeline runs.
+        `data` must contain 'article' and 'score' dicts.
+        Implementations that do not support per-article checkpointing may no-op.
+        """
+        pass
+
+    @abstractmethod
+    def load_scored_articles_for_week(self, user_id: str, week_start: str) -> list[dict]:
+        """
+        Load all scored articles already persisted for (user_id, week_start).
+        Returns a list of dicts, each with 'article' and 'score' keys.
+        Returns an empty list when no checkpoint exists.
+        """
+        pass
+
+    @abstractmethod
+    def clear_scored_checkpoint(self, user_id: str, week_start: str) -> None:
+        """
+        Delete all per-article checkpoint files for (user_id, week_start).
+        Called after the digest is successfully persisted — checkpoints are only
+        needed for crash recovery and are dead weight once the run succeeds.
+        """
+        pass

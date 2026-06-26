@@ -1,6 +1,7 @@
 import os
 import json
 import httpx
+from typing import Callable
 from stacktwin.pipeline.sources.base import Article
 from stacktwin.profile.schema import DeveloperProfile, ArticleScore
 
@@ -195,24 +196,41 @@ def filter_by_tags(
 def score_articles(
     articles: list[Article],
     profile: DeveloperProfile,
-    min_overall: float = 0.3
+    min_overall: float = 0.3,
+    already_scored: list[tuple[Article, ArticleScore]] | None = None,
+    on_scored: Callable[[Article, ArticleScore], None] | None = None,
 ) -> list[tuple[Article, ArticleScore]]:
     """
     Score all articles against a profile.
     Returns list of (article, score) tuples sorted by overall score descending.
     Filters out anything below min_overall threshold.
-    """
-    results = []
-    total = len(articles)
 
-    for i, article in enumerate(articles):
+    already_scored: pre-loaded checkpoint from a prior attempt — these articles
+        are included in the result without re-calling the LLM.
+    on_scored: called after each newly scored article so the caller can persist
+        a per-article checkpoint for resumability.
+    """
+    pre_scored: list[tuple[Article, ArticleScore]] = list(already_scored) if already_scored else []
+    already_scored_urls: set[str] = {a.url for a, _ in pre_scored}
+
+    articles_to_score = [a for a in articles if a.url not in already_scored_urls]
+    if already_scored_urls:
+        print(
+            f"[score] resuming: {len(already_scored_urls)} already scored, "
+            f"{len(articles_to_score)} remaining"
+        )
+
+    total = len(articles_to_score)
+    newly_scored: list[tuple[Article, ArticleScore]] = []
+    for i, article in enumerate(articles_to_score):
         print(f"[score] {i + 1}/{total} — {article.title[:50]}")
         score = score_article(article, profile)
+        newly_scored.append((article, score))
+        if on_scored:
+            on_scored(article, score)
 
-        if score.overall >= min_overall:
-            results.append((article, score))
-
-    # Sort best first
+    all_scored = pre_scored + newly_scored
+    results = [(a, s) for a, s in all_scored if s.overall >= min_overall]
     results.sort(key=lambda x: x[1].overall, reverse=True)
-    print(f"[score] {len(results)}/{total} articles passed threshold {min_overall}")
+    print(f"[score] {len(results)}/{len(all_scored)} articles passed threshold {min_overall}")
     return results

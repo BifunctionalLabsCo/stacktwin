@@ -219,6 +219,49 @@ class JSONStorage(StorageBackend):
         runs.sort(key=lambda r: r.created_at, reverse=True)
         return runs
 
+    def _scored_dir(self, user_id: str, week_start: str) -> str:
+        return os.path.join(
+            self.outputs_dir, "scored", self._safe_user_id(user_id), week_start
+        )
+
+    def save_scored_article(self, user_id: str, week_start: str, url: str, data: dict) -> None:
+        import hashlib
+        scored_dir = self._scored_dir(user_id, week_start)
+        os.makedirs(scored_dir, exist_ok=True)
+        url_hash = hashlib.md5(url.encode()).hexdigest()
+        path = os.path.join(scored_dir, f"{url_hash}.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
+    def load_scored_articles_for_week(self, user_id: str, week_start: str) -> list[dict]:
+        scored_dir = self._scored_dir(user_id, week_start)
+        if not os.path.exists(scored_dir):
+            return []
+        results = []
+        for filename in sorted(os.listdir(scored_dir)):
+            if not filename.endswith(".json"):
+                continue
+            path = os.path.join(scored_dir, filename)
+            try:
+                with open(path, encoding="utf-8") as f:
+                    results.append(json.load(f))
+            except Exception as exc:
+                print(f"[storage] skipping corrupt checkpoint file {filename}: {exc}")
+        return results
+
+    def clear_scored_checkpoint(self, user_id: str, week_start: str) -> None:
+        import shutil
+        scored_dir = self._scored_dir(user_id, week_start)
+        if os.path.exists(scored_dir):
+            shutil.rmtree(scored_dir)
+            print(f"[storage] cleared scored checkpoint: {scored_dir}")
+            # Remove parent dirs (user, then scored root) if now empty
+            for parent in [os.path.dirname(scored_dir), os.path.dirname(os.path.dirname(scored_dir))]:
+                try:
+                    os.rmdir(parent)
+                except OSError:
+                    break  # not empty or doesn't exist — stop
+
     def _track_files(self, user_id: str) -> list[str]:
         prefix = f"{self._safe_user_id(user_id)}_track_"
         return sorted(

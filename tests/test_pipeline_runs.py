@@ -39,9 +39,8 @@ def test_run_success_records_succeeded_run(monkeypatch, tmp_path):
     monkeypatch.setattr(digest_routes, "get_storage", lambda: storage)
     monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
 
-    from stacktwin.pipeline import ingest as ingest_module
-
-    monkeypatch.setattr(ingest_module, "load_or_fetch", lambda **kwargs: _fake_articles())
+    monkeypatch.setattr(digest_routes, "load_or_fetch", lambda **kwargs: _fake_articles())
+    monkeypatch.setattr(digest_routes, "load_or_build_tag_index", lambda articles, **kwargs: {})
 
     response = client.post("/api/digest/run?user_id=ada@example.com")
     assert response.status_code == 200
@@ -65,12 +64,10 @@ def test_run_failure_records_failed_run_with_sanitized_summary(monkeypatch, tmp_
     monkeypatch.setattr(digest_routes, "get_storage", lambda: storage)
     monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
 
-    from stacktwin.pipeline import ingest as ingest_module
-
     def _boom(**kwargs):
         raise RuntimeError("network exploded with secret-key=abc123\nTraceback (most recent...)")
 
-    monkeypatch.setattr(ingest_module, "load_or_fetch", _boom)
+    monkeypatch.setattr(digest_routes, "load_or_fetch", _boom)
 
     response = client.post("/api/digest/run?user_id=ada@example.com")
     assert response.status_code == 500
@@ -88,17 +85,16 @@ def test_retry_after_failure_creates_new_run_id(monkeypatch, tmp_path):
     storage = _storage_with_profile(tmp_path)
     monkeypatch.setattr(digest_routes, "get_storage", lambda: storage)
     monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
-
-    from stacktwin.pipeline import ingest as ingest_module
+    monkeypatch.setattr(digest_routes, "load_or_build_tag_index", lambda articles, **kwargs: {})
 
     def _boom(**kwargs):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(ingest_module, "load_or_fetch", _boom)
+    monkeypatch.setattr(digest_routes, "load_or_fetch", _boom)
     client.post("/api/digest/run?user_id=ada@example.com")
     failed_run_id = storage.load_latest_run("ada@example.com").run_id
 
-    monkeypatch.setattr(ingest_module, "load_or_fetch", lambda **kwargs: _fake_articles())
+    monkeypatch.setattr(digest_routes, "load_or_fetch", lambda **kwargs: _fake_articles())
     retry_response = client.post("/api/digest/run?user_id=ada@example.com")
     assert retry_response.status_code == 200
     retried_run_id = retry_response.json()["run"]["run_id"]
@@ -140,9 +136,8 @@ def test_run_routes_enforce_user_isolation(monkeypatch, tmp_path):
     monkeypatch.setattr(digest_routes, "get_storage", lambda: storage)
     monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
 
-    from stacktwin.pipeline import ingest as ingest_module
-
-    monkeypatch.setattr(ingest_module, "load_or_fetch", lambda **kwargs: _fake_articles())
+    monkeypatch.setattr(digest_routes, "load_or_fetch", lambda **kwargs: _fake_articles())
+    monkeypatch.setattr(digest_routes, "load_or_build_tag_index", lambda articles, **kwargs: {})
 
     client.post("/api/digest/run?user_id=ada@example.com")
 

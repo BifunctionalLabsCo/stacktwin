@@ -152,6 +152,46 @@ def score_article(article: Article, profile: DeveloperProfile) -> ArticleScore:
         return _stub_score(article)
 
 
+def filter_by_tags(
+    articles: list[Article],
+    profile: DeveloperProfile,
+    tag_index: dict[str, list[str]],
+) -> list[Article]:
+    """
+    Filter articles to those matching the user's profile tags using the pre-built tag index.
+    Falls back to all articles if profile has no tags or nothing matches.
+    """
+    user_tags: set[str] = set()
+    for field in [
+        profile.current_stack,
+        profile.learning,
+        profile.domains,
+        profile.topics_to_track,
+        profile.learning_goals,
+    ]:
+        for term in field:
+            normalized = term.lower().strip().replace(" ", "-")
+            user_tags.add(normalized)
+            for word in term.lower().split():
+                if len(word) > 2:
+                    user_tags.add(word)
+
+    if not user_tags or not tag_index:
+        return articles
+
+    matching_urls: set[str] = set()
+    for user_tag in user_tags:
+        if user_tag in tag_index:
+            matching_urls.update(tag_index[user_tag])
+        for index_tag, urls in tag_index.items():
+            if user_tag in index_tag or index_tag in user_tag:
+                matching_urls.update(urls)
+
+    filtered = [a for a in articles if a.url in matching_urls]
+    print(f"[score] tag filter: {len(filtered)}/{len(articles)} articles match profile tags")
+    return filtered if filtered else articles
+
+
 def score_articles(
     articles: list[Article],
     profile: DeveloperProfile,

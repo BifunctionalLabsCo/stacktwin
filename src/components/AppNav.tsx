@@ -4,10 +4,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Archive, CalendarDays, UserCircle } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
+import {
+  setClassroomUserId,
+  useActiveClassroomUserId,
+  useClassroomUsers
+} from "../lib/classroom-user";
 
 
 export function AppNav() {
   const pathname = usePathname();
+  const activeUserId = useActiveClassroomUserId();
+  const users = useClassroomUsers();
+  const activeUser = users.find((user) => user.id === activeUserId) ?? users[0];
 
   return (
     <header className="appNav">
@@ -31,7 +39,24 @@ export function AppNav() {
           <UserCircle size={16} /> Profile
         </Link>
       </nav>
-      <ThemeToggle />
+      <div className="appNavActions">
+        <label className="userSwitcher" htmlFor="classroom-user-switcher">
+          <span>Active learner</span>
+          <select
+            id="classroom-user-switcher"
+            value={activeUser?.id ?? ""}
+            onChange={(event) => setClassroomUserId(event.target.value)}
+            aria-label="Switch active learner"
+          >
+            {users.map((user) => (
+              <option key={user.id} value={user.id}>
+                {user.label} ({user.id})
+              </option>
+            ))}
+          </select>
+        </label>
+        <ThemeToggle />
+      </div>
     </header>
   );
 }

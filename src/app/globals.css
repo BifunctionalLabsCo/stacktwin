@@ -133,6 +133,37 @@ input:focus-visible {
   color: var(--ink);
 }
 
+.appNavActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-self: end;
+}
+
+.userSwitcher {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.userSwitcher span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.userSwitcher select {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+}
+
 .shell {
   width: min(1120px, calc(100vw - 32px));
   margin: 0 auto;
@@ -1007,8 +1038,19 @@ h1 {
 
 @media (max-width: 560px) {
   .appNav {
-    grid-template-columns: 36px 1fr auto;
-    gap: 8px;
+    grid-template-columns: 36px 1fr;
+    gap: 10px 8px;
+  }
+
+  .appNavActions {
+    grid-column: 1 / -1;
+    justify-content: space-between;
+    align-items: stretch;
+  }
+
+  .userSwitcher {
+    min-width: 0;
+    width: 100%;
   }
 
   .appMark {
@@ -1026,6 +1068,10 @@ h1 {
   .appNav nav a svg {
     width: 18px;
     height: 18px;
+  }
+
+  .userSwitcher select {
+    width: 100%;
   }
 
   .shell,

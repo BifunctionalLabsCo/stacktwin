@@ -11,6 +11,7 @@ import {
   uploadCv,
   validateCvFile
 } from "../lib/onboarding";
+import { useActiveClassroomUserId } from "../lib/classroom-user";
 import type { DeveloperProfile } from "../lib/profile-types";
 import { ProfileReviewForm } from "./ProfileReviewForm";
 
@@ -37,6 +38,7 @@ export function OnboardingFlow({
   mode?: "onboarding" | "settings";
 }) {
   const router = useRouter();
+  const userId = useActiveClassroomUserId();
   const [step, setStep] = useState<Step>(
     initialProfile
       ? { name: "review", profile: initialProfile, isUnchanged: true }
@@ -59,7 +61,7 @@ export function OnboardingFlow({
       setStep((current) =>
         current.name === "uploading" ? { name: "uploading", progress: percent } : current
       );
-    }).then((outcome) => {
+    }, userId).then((outcome) => {
       if (outcome.status === "invalid_file" || outcome.status === "extraction_failed" || outcome.status === "network_error") {
         setStep({ name: "error", kind: outcome.status, message: outcome.message });
         return;
@@ -70,7 +72,7 @@ export function OnboardingFlow({
         isUnchanged: outcome.status === "profile-cache-hit"
       });
     });
-  }, []);
+  }, [userId]);
 
   const startGeneration = useCallback(() => {
     if (generationStarted.current) {
@@ -80,19 +82,19 @@ export function OnboardingFlow({
     pollAttempts.current = 0;
     setStep({ name: "generating" });
 
-    triggerGeneration().then((outcome) => {
+    triggerGeneration(userId).then((outcome) => {
       if (outcome.status === "network_error") {
         generationStarted.current = false;
         setStep({ name: "failed", message: outcome.message });
         return;
       }
-      pollUntilReady();
+      pollUntilReady(userId);
     });
-  }, []);
+  }, [userId]);
 
-  function pollUntilReady() {
+  function pollUntilReady(activeUserId: string) {
     pollAttempts.current += 1;
-    pollLatestRun().then((result) => {
+    pollLatestRun(activeUserId).then((result) => {
       if (result.learnerStatus === "ready") {
         router.replace("/");
         return;
@@ -113,7 +115,7 @@ export function OnboardingFlow({
         });
         return;
       }
-      setTimeout(pollUntilReady, POLL_INTERVAL_MS);
+      setTimeout(() => pollUntilReady(activeUserId), POLL_INTERVAL_MS);
     });
   }
 
@@ -133,7 +135,7 @@ export function OnboardingFlow({
       return;
     }
 
-    saveManualProfile(profile).then((result) => {
+    saveManualProfile(profile, userId).then((result) => {
       setSubmitting(false);
       if (!result.ok) {
         setStep({ name: "error", kind: "network_error", message: result.message });

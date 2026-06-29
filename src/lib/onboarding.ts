@@ -29,7 +29,8 @@ export function validateCvFile(file: File): string | null {
 
 export function uploadCv(
   file: File,
-  onProgress?: (percent: number) => void
+  onProgress?: (percent: number) => void,
+  userId = getClassroomUserId()
 ): Promise<UploadOutcome> {
   return new Promise((resolve) => {
     const formData = new FormData();
@@ -38,7 +39,7 @@ export function uploadCv(
     const request = new XMLHttpRequest();
     request.open(
       "POST",
-      `/api/profile/upload?user_id=${encodeURIComponent(getClassroomUserId())}`
+      `/api/profile/upload?user_id=${encodeURIComponent(userId)}`
     );
 
     request.upload.onprogress = (event) => {
@@ -95,10 +96,10 @@ export function uploadCv(
   });
 }
 
-export async function fetchCurrentProfile(): Promise<DeveloperProfile | null> {
+export async function fetchCurrentProfile(userId = getClassroomUserId()): Promise<DeveloperProfile | null> {
   try {
     const response = await fetch(
-      `/api/profile/current?user_id=${encodeURIComponent(getClassroomUserId())}`,
+      `/api/profile/current?user_id=${encodeURIComponent(userId)}`,
       { headers: { Accept: "application/json" } }
     );
     if (!response.ok) {
@@ -111,11 +112,12 @@ export async function fetchCurrentProfile(): Promise<DeveloperProfile | null> {
 }
 
 export async function saveManualProfile(
-  profile: DeveloperProfile
+  profile: DeveloperProfile,
+  userId = getClassroomUserId()
 ): Promise<{ ok: true; profile: DeveloperProfile } | { ok: false; message: string }> {
   try {
     const response = await fetch(
-      `/api/profile/manual?user_id=${encodeURIComponent(getClassroomUserId())}`,
+      `/api/profile/manual?user_id=${encodeURIComponent(userId)}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -136,10 +138,10 @@ export type GenerationOutcome =
   | { status: "queued" }
   | { status: "network_error"; message: string };
 
-export async function triggerGeneration(): Promise<GenerationOutcome> {
+export async function triggerGeneration(userId = getClassroomUserId()): Promise<GenerationOutcome> {
   try {
     const response = await fetch(
-      `/api/digest/run?user_id=${encodeURIComponent(getClassroomUserId())}`,
+      `/api/digest/run?user_id=${encodeURIComponent(userId)}`,
       { method: "POST", headers: { Accept: "application/json" } }
     );
     if (!response.ok) {
@@ -161,10 +163,10 @@ export type RunPollResult =
   | { learnerStatus: "pending" | "ready" | "failed"; failureSummary?: string | null }
   | { learnerStatus: "unknown" };
 
-export async function pollLatestRun(): Promise<RunPollResult> {
+export async function pollLatestRun(userId = getClassroomUserId()): Promise<RunPollResult> {
   try {
     const response = await fetch(
-      `/api/digest/runs/latest?user_id=${encodeURIComponent(getClassroomUserId())}`,
+      `/api/digest/runs/latest?user_id=${encodeURIComponent(userId)}`,
       { headers: { Accept: "application/json" } }
     );
     if (response.status === 404) {

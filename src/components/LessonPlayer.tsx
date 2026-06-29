@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, BookOpen, Check, Clock, ExternalLink } from "lucide-react";
 import { markModuleComplete } from "../lib/progress";
 import { fetchLessonState, type LessonState } from "../lib/weekly-track";
+import { useActiveClassroomUserId } from "../lib/classroom-user";
 
 
 export function LessonPlayer({
@@ -18,13 +19,17 @@ export function LessonPlayer({
   demo?: boolean;
 }) {
   const router = useRouter();
+  const userId = useActiveClassroomUserId();
   const [state, setState] = useState<LessonState>({ status: "loading" });
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [answerChecked, setAnswerChecked] = useState(false);
 
   useEffect(() => {
     let active = true;
-    fetchLessonState(moduleId, weekStart, demo).then((nextState) => {
+    setState({ status: "loading" });
+    setSelectedAnswer(null);
+    setAnswerChecked(false);
+    fetchLessonState(moduleId, weekStart, demo, userId).then((nextState) => {
       if (active) {
         setState(nextState);
       }
@@ -32,7 +37,7 @@ export function LessonPlayer({
     return () => {
       active = false;
     };
-  }, [demo, moduleId, weekStart]);
+  }, [demo, moduleId, userId, weekStart]);
 
   if (state.status === "loading") {
     return (

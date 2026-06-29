@@ -60,11 +60,11 @@ export type LessonState =
   | { status: "error"; message: string }
   | { status: "ready"; lesson: LessonModule };
 
-export async function fetchWeeklyTrackState(): Promise<WeeklyTrackState> {
+export async function fetchWeeklyTrackState(userId = getClassroomUserId()): Promise<WeeklyTrackState> {
   try {
     const endpoint = isDemoMode()
       ? "/api/track/preview"
-      : `/api/track/current?user_id=${encodeURIComponent(getClassroomUserId())}`;
+      : `/api/track/current?user_id=${encodeURIComponent(userId)}`;
     const response = await fetch(endpoint, {
       headers: { Accept: "application/json" }
     });
@@ -104,13 +104,14 @@ export async function fetchWeeklyTrackState(): Promise<WeeklyTrackState> {
 export async function fetchLessonState(
   moduleId: string,
   weekStart?: string,
-  demo = false
+  demo = false,
+  userId = getClassroomUserId()
 ): Promise<LessonState> {
   try {
     const endpoint = demo
       ? `/api/track/preview/${encodeURIComponent(moduleId)}`
       : `/api/track/${encodeURIComponent(weekStart ?? "")}/modules/${encodeURIComponent(moduleId)}`
-        + `?user_id=${encodeURIComponent(getClassroomUserId())}`;
+        + `?user_id=${encodeURIComponent(userId)}`;
     const response = await fetch(endpoint, {
       headers: { Accept: "application/json" }
     });

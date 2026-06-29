@@ -9,6 +9,7 @@ import {
   type ArchivedTrack,
   type TrackHistoryItem
 } from "../lib/classroom";
+import { getClassroomUserId, useActiveClassroomUserId } from "../lib/classroom-user";
 
 
 type ArchiveState =
@@ -17,23 +18,46 @@ type ArchiveState =
   | { status: "ready"; weeks: TrackHistoryItem[] };
 
 export function ArchiveView() {
+  const userId = useActiveClassroomUserId();
   const [state, setState] = useState<ArchiveState>({ status: "loading" });
   const [selected, setSelected] = useState<ArchivedTrack | null>(null);
   const [detailStatus, setDetailStatus] = useState<"idle" | "loading" | "error">("idle");
 
   useEffect(() => {
-    fetchTrackHistory()
-      .then((weeks) => setState({ status: "ready", weeks }))
-      .catch(() => setState({ status: "error", message: "The archive could not be loaded." }));
-  }, []);
+    let active = true;
+    setState({ status: "loading" });
+    setSelected(null);
+    setDetailStatus("idle");
+    fetchTrackHistory(userId)
+      .then((weeks) => {
+        if (active) {
+          setState({ status: "ready", weeks });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setState({ status: "error", message: "The archive could not be loaded." });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [userId]);
 
   async function openWeek(weekStart: string) {
     setDetailStatus("loading");
+    const requestedUserId = userId;
     try {
-      setSelected(await fetchArchivedTrack(weekStart));
+      const track = await fetchArchivedTrack(weekStart, requestedUserId);
+      if (getClassroomUserId() !== requestedUserId) {
+        return;
+      }
+      setSelected(track);
       setDetailStatus("idle");
     } catch {
-      setDetailStatus("error");
+      if (getClassroomUserId() === requestedUserId) {
+        setDetailStatus("error");
+      }
     }
   }
 

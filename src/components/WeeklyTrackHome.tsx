@@ -20,6 +20,7 @@ import {
 } from "../lib/weekly-track";
 import { applyCompletedProgress } from "../lib/progress";
 import { fetchProfileInfluence, type ProfileInfluence } from "../lib/classroom";
+import { useActiveClassroomUserId } from "../lib/classroom-user";
 import { ProfileInfluenceBand } from "./ProfileInfluenceBand";
 
 const statusMeta = {
@@ -33,13 +34,16 @@ const statusMeta = {
 
 export function WeeklyTrackHome() {
   const router = useRouter();
+  const userId = useActiveClassroomUserId();
   const [state, setState] = useState<WeeklyTrackState>({ status: "loading" });
   const [profile, setProfile] = useState<ProfileInfluence | null>(null);
 
   useEffect(() => {
     let active = true;
+    setState({ status: "loading" });
+    setProfile(null);
 
-    fetchWeeklyTrackState().then((nextState) => {
+    fetchWeeklyTrackState(userId).then((nextState) => {
       if (!active) {
         return;
       }
@@ -53,7 +57,7 @@ export function WeeklyTrackHome() {
           : nextState
       );
     });
-    fetchProfileInfluence().then((nextProfile) => {
+    fetchProfileInfluence(userId).then((nextProfile) => {
       if (active) {
         setProfile(nextProfile);
       }
@@ -62,7 +66,7 @@ export function WeeklyTrackHome() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [router, userId]);
 
   if (state.status === "loading") {
     return (

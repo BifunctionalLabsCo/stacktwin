@@ -27,9 +27,9 @@ type ProfilePayload = {
   career_direction?: string | null;
 };
 
-export async function fetchProfileInfluence(): Promise<ProfileInfluence | null> {
+export async function fetchProfileInfluence(userId = getClassroomUserId()): Promise<ProfileInfluence | null> {
   const response = await fetch(
-    `/api/profile/current?user_id=${encodeURIComponent(getClassroomUserId())}`,
+    `/api/profile/current?user_id=${encodeURIComponent(userId)}`,
     { headers: { Accept: "application/json" } }
   );
   if (!response.ok) {
@@ -45,9 +45,9 @@ export async function fetchProfileInfluence(): Promise<ProfileInfluence | null> 
   };
 }
 
-export async function fetchTrackHistory(): Promise<TrackHistoryItem[]> {
+export async function fetchTrackHistory(userId = getClassroomUserId()): Promise<TrackHistoryItem[]> {
   const response = await fetch(
-    `/api/track/history?user_id=${encodeURIComponent(getClassroomUserId())}`,
+    `/api/track/history?user_id=${encodeURIComponent(userId)}`,
     { headers: { Accept: "application/json" } }
   );
   if (!response.ok) {
@@ -57,9 +57,12 @@ export async function fetchTrackHistory(): Promise<TrackHistoryItem[]> {
   return payload.weeks;
 }
 
-export async function fetchArchivedTrack(weekStart: string): Promise<ArchivedTrack> {
+export async function fetchArchivedTrack(
+  weekStart: string,
+  userId = getClassroomUserId()
+): Promise<ArchivedTrack> {
   const response = await fetch(
-    `/api/track/history/${encodeURIComponent(weekStart)}?user_id=${encodeURIComponent(getClassroomUserId())}`,
+    `/api/track/history/${encodeURIComponent(weekStart)}?user_id=${encodeURIComponent(userId)}`,
     { headers: { Accept: "application/json" } }
   );
   if (!response.ok) {

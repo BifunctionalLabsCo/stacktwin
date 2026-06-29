@@ -62,7 +62,13 @@ Do not set these in production. The default (`true`) enforces SSL verification i
 
 The compiled app opens on the learner's latest generated weekly track. It includes lesson launch cards, a lesson player, progress scoped to the generated track, source provenance, and a compact explanation of which profile signals influenced the week. The archive at `/archive/` lists earlier tracks and opens their source-backed learning material inline.
 
-Set `NEXT_PUBLIC_STACKTWIN_USER_ID` before `npm run build` to choose the learner whose profile and archive the static app requests. The default is `demo@stacktwin.dev`.
+The nav includes a learner switcher that changes the active `user_id` in-browser without a reload. By default the app ships with a small demo set:
+
+- `demo@stacktwin.dev`
+- `soumya@gmail.com`
+- `john@company.com`
+
+Set `NEXT_PUBLIC_STACKTWIN_DEMO_USERS` before `npm run build` to replace that list. It accepts either a JSON array of `{ id, label, description }` objects or a comma-separated `id|label|description` list. The active learner persists in `localStorage` for the browser session.
 
 The production classroom reads `GET /api/track/current` and week-scoped lesson routes. Set `NEXT_PUBLIC_STACKTWIN_DEMO_MODE=true` only when intentionally using the hardcoded preview fixture. Generated tracks are persisted separately from raw digests so current and archived weeks share one reusable learning-module contract.
 

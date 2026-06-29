@@ -14,12 +14,14 @@ import {
 import { useActiveClassroomUserId } from "../lib/classroom-user";
 import type { DeveloperProfile } from "../lib/profile-types";
 import { ProfileReviewForm } from "./ProfileReviewForm";
+import { QuickStartProfileForm } from "./QuickStartProfileForm";
 
 const POLL_INTERVAL_MS = 4000;
 const MAX_POLL_ATTEMPTS = 30;
 
 type Step =
   | { name: "choose" }
+  | { name: "quick-start"; profile: DeveloperProfile }
   | { name: "uploading"; progress: number }
   | { name: "review"; profile: DeveloperProfile; isUnchanged: boolean }
   | { name: "generating" }
@@ -32,9 +34,11 @@ type Step =
 
 export function OnboardingFlow({
   initialProfile = null,
+  initialView = "choose",
   mode = "onboarding"
 }: {
   initialProfile?: DeveloperProfile | null;
+  initialView?: "choose" | "quick-start";
   mode?: "onboarding" | "settings";
 }) {
   const router = useRouter();
@@ -42,7 +46,9 @@ export function OnboardingFlow({
   const [step, setStep] = useState<Step>(
     initialProfile
       ? { name: "review", profile: initialProfile, isUnchanged: true }
-      : { name: "choose" }
+      : initialView === "quick-start"
+        ? { name: "quick-start", profile: emptyProfile() }
+        : { name: "choose" }
   );
   const [submitting, setSubmitting] = useState(false);
   const generationStarted = useRef(false);
@@ -157,6 +163,15 @@ export function OnboardingFlow({
           <button
             type="button"
             className="onboardingCard"
+            onClick={() => setStep({ name: "quick-start", profile: emptyProfile() })}
+          >
+            <CheckCircle2 size={28} />
+            <h2>Quick start a profile</h2>
+            <p>Seed the minimum preferences needed to personalize your first classroom pass.</p>
+          </button>
+          <button
+            type="button"
+            className="onboardingCard"
             onClick={() => fileInputRef.current?.click()}
           >
             <UploadCloud size={28} />
@@ -177,16 +192,27 @@ export function OnboardingFlow({
               event.target.value = "";
             }}
           />
-          <button
-            type="button"
-            className="onboardingCard"
-            onClick={() => setStep({ name: "review", profile: emptyProfile(), isUnchanged: false })}
-          >
+          <button type="button" className="onboardingCard" onClick={() => setStep({ name: "review", profile: emptyProfile(), isUnchanged: false })}>
             <FileText size={28} />
             <h2>Enter details manually</h2>
             <p>Skip the upload and fill in your role, stack, and learning goals yourself.</p>
           </button>
         </section>
+      </main>
+    );
+  }
+
+  if (step.name === "quick-start") {
+    return (
+      <main className="onboardingShell">
+        <OnboardingHeader />
+        <QuickStartProfileForm
+          profile={step.profile}
+          submitting={submitting}
+          confirmLabel={mode === "settings" ? "Save quick-start preferences" : "Save and start my classroom"}
+          onExpandFullProfile={(profile) => setStep({ name: "review", profile, isUnchanged: false })}
+          onConfirm={(profile) => handleConfirm(profile, false)}
+        />
       </main>
     );
   }

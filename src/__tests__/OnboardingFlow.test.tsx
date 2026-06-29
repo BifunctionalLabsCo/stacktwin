@@ -78,6 +78,43 @@ describe("OnboardingFlow manual entry path", () => {
   });
 });
 
+describe("OnboardingFlow quick start path", () => {
+  it("seeds a minimal profile and starts generation", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("/api/profile/manual")) {
+        const body = JSON.parse(init?.body as string);
+        return jsonResponse({ status: "ok", user_id: "demo", profile: body });
+      }
+      if (url.includes("/api/digest/runs/latest")) {
+        return jsonResponse({ learner_status: "ready" });
+      }
+      if (url.includes("/api/digest/run")) {
+        return jsonResponse({ status: "computed" });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<OnboardingFlow />);
+
+    await user.click(screen.getByRole("button", { name: /quick start a profile/i }));
+
+    expect(await screen.findByLabelText(/quick start profile setup/i)).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/^name$/i), "Ada Lovelace");
+    await user.type(screen.getByLabelText(/current stack/i), "TypeScript, Postgres");
+    await user.type(screen.getByLabelText(/learning goals/i), "Ship a production agent");
+    await user.click(screen.getByRole("button", { name: /save and start my classroom/i }));
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/profile/manual"),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+});
+
 describe("OnboardingFlow error recovery", () => {
   it("rejects an unsupported file type before uploading", async () => {
     render(<OnboardingFlow />);

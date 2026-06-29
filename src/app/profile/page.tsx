@@ -38,16 +38,7 @@ export default function ProfileSettingsPage() {
   }
 
   if (state.status === "missing") {
-    return (
-      <main className="onboardingShell">
-        <section className="statePanel isError" role="alert">
-          <div>
-            <h2>No profile found</h2>
-            <p>Complete onboarding first to create a developer profile.</p>
-          </div>
-        </section>
-      </main>
-    );
+    return <OnboardingFlow initialView="quick-start" />;
   }
 
   return <OnboardingFlow initialProfile={state.profile} mode="settings" />;

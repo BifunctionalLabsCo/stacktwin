@@ -222,6 +222,67 @@ class NebiusS3Storage(StorageBackend):
                 runs.append(PipelineRun(**data))
         return runs
 
+    def _scored_article_key(self, user_id: str, week_start: str, url: str) -> str:
+        import hashlib
+        url_hash = hashlib.md5(url.encode()).hexdigest()
+        return self._key(f"scored/{self._user_key(user_id)}/{week_start}/{url_hash}.json")
+
+    def _scored_article_prefix(self, user_id: str, week_start: str) -> str:
+        return self._key(f"scored/{self._user_key(user_id)}/{week_start}/")
+
+    def save_scored_article(self, user_id: str, week_start: str, url: str, data: dict) -> None:
+        key = self._scored_article_key(user_id, week_start, url)
+        self._put_json(key, data)
+
+    def load_scored_articles_for_week(self, user_id: str, week_start: str) -> list[dict]:
+        prefix = self._scored_article_prefix(user_id, week_start)
+        keys = []
+        continuation_token = None
+        while True:
+            request = {"Bucket": self.bucket, "Prefix": prefix}
+            if continuation_token:
+                request["ContinuationToken"] = continuation_token
+            response = self.client.list_objects_v2(**request)
+            keys.extend(
+                item["Key"]
+                for item in response.get("Contents", [])
+                if item["Key"].endswith(".json")
+            )
+            if not response.get("IsTruncated"):
+                break
+            continuation_token = response.get("NextContinuationToken")
+        results = []
+        for key in sorted(keys):
+            data = self._get_json(key)
+            if data:
+                results.append(data)
+        return results
+
+    def clear_scored_checkpoint(self, user_id: str, week_start: str) -> None:
+        prefix = self._scored_article_prefix(user_id, week_start)
+        keys_to_delete = []
+        continuation_token = None
+        while True:
+            request = {"Bucket": self.bucket, "Prefix": prefix}
+            if continuation_token:
+                request["ContinuationToken"] = continuation_token
+            response = self.client.list_objects_v2(**request)
+            keys_to_delete.extend(
+                item["Key"] for item in response.get("Contents", [])
+            )
+            if not response.get("IsTruncated"):
+                break
+            continuation_token = response.get("NextContinuationToken")
+        if keys_to_delete:
+            # S3 delete_objects is limited to 1000 keys per call — chunk accordingly.
+            for i in range(0, len(keys_to_delete), 1000):
+                chunk = keys_to_delete[i : i + 1000]
+                self.client.delete_objects(
+                    Bucket=self.bucket,
+                    Delete={"Objects": [{"Key": k} for k in chunk]},
+                )
+            print(f"[storage] cleared {len(keys_to_delete)} scored checkpoint objects for {user_id}/{week_start}")
+
     def _find_run_key(self, user_id: str, run_id: str) -> str | None:
         for key in self._run_keys(user_id):
             if key.endswith(f"_{run_id}.json"):

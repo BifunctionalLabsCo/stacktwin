@@ -72,6 +72,26 @@ Set `NEXT_PUBLIC_STACKTWIN_DEMO_USERS` before `npm run build` to replace that li
 
 The production classroom reads `GET /api/track/current` and week-scoped lesson routes. Set `NEXT_PUBLIC_STACKTWIN_DEMO_MODE=true` only when intentionally using the hardcoded preview fixture. Generated tracks are persisted separately from raw digests so current and archived weeks share one reusable learning-module contract.
 
+## Pipeline Configuration
+
+Two environment variables control how much work the pipeline does each week:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `SOURCE_LIMIT` | `50` | Articles fetched per source per week |
+| `DIGEST_SIZE` | `10` | Articles included in the final weekly digest |
+
+For quick end-to-end runs during development, add to `.env`:
+
+```
+SOURCE_LIMIT=5
+DIGEST_SIZE=3
+```
+
+**Tag index.** After ingestion the pipeline calls Nebius once per week (not once per user) to assign normalized topic tags to every article. The result is cached as `outputs/articles_{week}_tags.json`. On subsequent requests that week the cache is reused. When no API key is set, existing article tags from each source are used as a fallback.
+
+**Profile-driven filtering.** Before LLM scoring, each user's profile signals (stack, learning goals, domains, topics to track) are matched against the tag index. Only articles with at least one matching tag are passed to the scorer, reducing per-user LLM calls from ~100+ to ~20–30 while preserving recall via partial-match and substring logic.
+
 ## Storage And Idempotency
 
 Local development uses JSON files by default. Production can use Nebius Object Storage through the same `StorageBackend` contract:
@@ -82,6 +102,8 @@ Local development uses JSON files by default. Production can use Nebius Object S
 4. Build and serve the unified app with the commands in the Development section.
 
 Profiles and weekly tracks retain identical API behavior in either backend. Uploaded CV bytes are SHA-256 hashed; an identical re-upload returns the stored profile without another model extraction. Digest generation checks the user and Monday week key first; retries return the completed track instead of running ingestion, scoring, and generation again.
+
+**Resumable pipeline runs.** Each article is checkpointed to storage individually as it is scored (`scored/{user}/{week}/{url_hash}.json` in S3, `outputs/scored/{user}/{week}/` locally). If a run fails mid-scoring, the next invocation loads the checkpoint and skips already-scored articles — only the remaining batch is sent to the LLM. On successful completion the checkpoint is deleted automatically. This means a retry after a partial failure never duplicates LLM calls for articles that were already processed.
 
 Run the deterministic contract suite with:
 

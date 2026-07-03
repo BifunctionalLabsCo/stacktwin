@@ -7,10 +7,17 @@ from stacktwin.api.routes import digest as digest_routes
 from stacktwin.pipeline.sources.base import Article
 from stacktwin.profile.schema import DeveloperProfile
 from stacktwin.storage.json_storage import JSONStorage
+import stacktwin.pipeline.score as _score_module
 
 from tests.test_storage import _digest
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _force_stub_scores(monkeypatch):
+    """Zero the module-level API key so score_articles uses stub scores (no LLM calls in tests)."""
+    monkeypatch.setattr(_score_module, "NEBIUS_API_KEY", "")
 
 
 def _week_start() -> str:
@@ -37,8 +44,6 @@ def _fake_articles():
 def test_run_success_records_succeeded_run(monkeypatch, tmp_path):
     storage = _storage_with_profile(tmp_path)
     monkeypatch.setattr(digest_routes, "get_storage", lambda: storage)
-    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
-
     monkeypatch.setattr(digest_routes, "load_or_fetch", lambda **kwargs: _fake_articles())
     monkeypatch.setattr(digest_routes, "load_or_build_tag_index", lambda articles, **kwargs: {})
 
@@ -62,7 +67,6 @@ def test_run_success_records_succeeded_run(monkeypatch, tmp_path):
 def test_run_failure_records_failed_run_with_sanitized_summary(monkeypatch, tmp_path):
     storage = _storage_with_profile(tmp_path)
     monkeypatch.setattr(digest_routes, "get_storage", lambda: storage)
-    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
 
     def _boom(**kwargs):
         raise RuntimeError("network exploded with secret-key=abc123\nTraceback (most recent...)")
@@ -84,7 +88,6 @@ def test_run_failure_records_failed_run_with_sanitized_summary(monkeypatch, tmp_
 def test_retry_after_failure_creates_new_run_id(monkeypatch, tmp_path):
     storage = _storage_with_profile(tmp_path)
     monkeypatch.setattr(digest_routes, "get_storage", lambda: storage)
-    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
     monkeypatch.setattr(digest_routes, "load_or_build_tag_index", lambda articles, **kwargs: {})
 
     def _boom(**kwargs):
@@ -134,8 +137,6 @@ def test_run_routes_enforce_user_isolation(monkeypatch, tmp_path):
     storage = _storage_with_profile(tmp_path, user_id="ada@example.com")
     storage.save_profile("bo@example.com", DeveloperProfile(name="Bo"))
     monkeypatch.setattr(digest_routes, "get_storage", lambda: storage)
-    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
-
     monkeypatch.setattr(digest_routes, "load_or_fetch", lambda **kwargs: _fake_articles())
     monkeypatch.setattr(digest_routes, "load_or_build_tag_index", lambda articles, **kwargs: {})
 
@@ -193,7 +194,6 @@ def test_resume_empty_checkpoint_behaves_like_fresh_run(monkeypatch, tmp_path):
     """When no checkpoint exists the run completes normally."""
     storage = _tracking_storage(tmp_path)
     monkeypatch.setattr(digest_routes, "get_storage", lambda: storage)
-    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
     monkeypatch.setattr(digest_routes, "load_or_fetch", lambda **kwargs: _fake_articles())
     monkeypatch.setattr(digest_routes, "load_or_build_tag_index", lambda articles, **kwargs: {})
 
@@ -213,7 +213,6 @@ def test_resume_skips_checkpointed_articles(monkeypatch, tmp_path):
 
     storage = _tracking_storage(tmp_path)
     monkeypatch.setattr(digest_routes, "get_storage", lambda: storage)
-    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
     monkeypatch.setattr(digest_routes, "load_or_build_tag_index", lambda articles, **kwargs: {})
 
     article_a, article_b = _fake_articles()
@@ -241,7 +240,6 @@ def test_resume_corrupt_checkpoint_entry_is_skipped(monkeypatch, tmp_path):
     """A malformed checkpoint entry is skipped silently; the run still succeeds."""
     storage = _tracking_storage(tmp_path)
     monkeypatch.setattr(digest_routes, "get_storage", lambda: storage)
-    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
     monkeypatch.setattr(digest_routes, "load_or_fetch", lambda **kwargs: _fake_articles())
     monkeypatch.setattr(digest_routes, "load_or_build_tag_index", lambda articles, **kwargs: {})
 

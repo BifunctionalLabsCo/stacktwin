@@ -274,10 +274,13 @@ class NebiusS3Storage(StorageBackend):
                 break
             continuation_token = response.get("NextContinuationToken")
         if keys_to_delete:
-            self.client.delete_objects(
-                Bucket=self.bucket,
-                Delete={"Objects": [{"Key": k} for k in keys_to_delete]},
-            )
+            # S3 delete_objects is limited to 1000 keys per call — chunk accordingly.
+            for i in range(0, len(keys_to_delete), 1000):
+                chunk = keys_to_delete[i : i + 1000]
+                self.client.delete_objects(
+                    Bucket=self.bucket,
+                    Delete={"Objects": [{"Key": k} for k in chunk]},
+                )
             print(f"[storage] cleared {len(keys_to_delete)} scored checkpoint objects for {user_id}/{week_start}")
 
     def _find_run_key(self, user_id: str, run_id: str) -> str | None:

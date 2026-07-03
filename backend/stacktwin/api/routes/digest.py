@@ -161,9 +161,12 @@ def run_pipeline(user_id: str = Query(..., description="User email address")):
 
         _transition(storage, run, "persisting")
         digest_path = storage.save_digest(user_id, digest)
-        storage.clear_scored_checkpoint(user_id, week_start)
         track = build_weekly_track(digest, profile)
         track_path = storage.save_track(user_id, track)
+        # Clear checkpoint only after both digest and track are persisted successfully.
+        # If track generation or save_track fails, the checkpoint is preserved so
+        # a retry can resume without rescoring from scratch.
+        storage.clear_scored_checkpoint(user_id, week_start)
 
         run.track_id = track.id
         _transition(storage, run, "done", "succeeded")

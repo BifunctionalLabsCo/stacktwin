@@ -281,7 +281,10 @@ class NebiusS3Storage(StorageBackend):
                     Bucket=self.bucket,
                     Delete={"Objects": [{"Key": k} for k in chunk]},
                 )
-            print(f"[storage] cleared {len(keys_to_delete)} scored checkpoint objects for {user_id}/{week_start}")
+            print(
+                f"[storage] cleared {len(keys_to_delete)} scored checkpoint objects for "
+                f"{user_id}/{week_start}"
+            )
 
     def _find_run_key(self, user_id: str, run_id: str) -> str | None:
         for key in self._run_keys(user_id):

@@ -19,6 +19,7 @@ from stacktwin.storage.nebius_s3_storage import NebiusS3Storage
 class FakeS3Client:
     def __init__(self):
         self.objects: dict[tuple[str, str], bytes] = {}
+        self.delete_calls: list[list[str]] = []
 
     def put_object(self, Bucket, Key, Body, **kwargs):
         self.objects[(Bucket, Key)] = Body
@@ -43,6 +44,13 @@ class FakeS3Client:
             "Contents": [{"Key": key} for key in keys],
             "IsTruncated": False,
         }
+
+    def delete_objects(self, Bucket, Delete, **kwargs):
+        keys = [item["Key"] for item in Delete.get("Objects", [])]
+        self.delete_calls.append(keys)
+        for key in keys:
+            self.objects.pop((Bucket, key), None)
+        return {"Deleted": [{"Key": key} for key in keys]}
 
 
 class FakeClientError(Exception):
@@ -257,6 +265,39 @@ def test_json_storage_reads_legacy_profile(tmp_path):
 
     assert storage.load_profile("legacy@example.com").name == "Legacy"
     assert storage.load_profile_source_hash("legacy@example.com") is None
+
+
+def test_clear_scored_checkpoint_chunks_s3_deletes():
+    client = FakeS3Client()
+    storage = NebiusS3Storage(
+        bucket="test-bucket",
+        endpoint_url="https://storage.example.com",
+        region="test-region",
+        access_key_id="test-key",
+        secret_access_key="test-secret",
+        prefix="contract-tests",
+        client=client,
+    )
+
+    user_id = "ada@example.com"
+    week_start = "2026-06-15"
+    for index in range(1001):
+        storage.save_scored_article(
+            user_id,
+            week_start,
+            url=f"https://example.com/article-{index}",
+            data={
+                "article": {"url": f"https://example.com/article-{index}"},
+                "score": {"overall": 0.9},
+            },
+        )
+
+    storage.clear_scored_checkpoint(user_id, week_start)
+
+    assert len(client.delete_calls) == 2
+    assert len(client.delete_calls[0]) == 1000
+    assert len(client.delete_calls[1]) == 1
+    assert storage.load_scored_articles_for_week(user_id, week_start) == []
 
 
 @pytest.mark.skipif(

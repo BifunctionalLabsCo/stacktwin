@@ -229,6 +229,71 @@ export function createQuickStartProfileDraft(userId = getClassroomUserId()): Qui
   };
 }
 
+type PersistedOnboardingFlow =
+  | { step: "quick"; draft: QuickStartProfileDraft }
+  | { step: "review"; profile: DeveloperProfile };
+
+const ONBOARDING_STATE_PREFIX = "stacktwin.onboarding-flow";
+
+function onboardingStateKey(userId: string) {
+  return `${ONBOARDING_STATE_PREFIX}:${userId}`;
+}
+
+export function loadOnboardingFlowState(userId = getClassroomUserId()): PersistedOnboardingFlow | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(onboardingStateKey(userId));
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as PersistedOnboardingFlow;
+    if (parsed.step === "quick" && typeof parsed.draft === "object" && parsed.draft) {
+      return parsed;
+    }
+    if (parsed.step === "review" && typeof parsed.profile === "object" && parsed.profile) {
+      return parsed;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+export function saveOnboardingFlowState(
+  userId: string,
+  step: PersistedOnboardingFlow | "choose" | "uploading" | "generating" | "failed" | "error"
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    if (step === "choose" || step === "uploading" || step === "generating" || step === "failed" || step === "error") {
+      window.localStorage.removeItem(onboardingStateKey(userId));
+      return;
+    }
+    window.localStorage.setItem(onboardingStateKey(userId), JSON.stringify(step));
+  } catch {
+    // Ignore storage failures in the browser.
+  }
+}
+
+export function clearOnboardingFlowState(userId = getClassroomUserId()) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(onboardingStateKey(userId));
+  } catch {
+    // Ignore storage failures in the browser.
+  }
+}
+
 function splitCommaList(value: string) {
   return value
     .split(",")

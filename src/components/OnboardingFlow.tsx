@@ -5,10 +5,13 @@ import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle2, FileText, RotateCcw, Sparkles, UploadCloud } from "lucide-react";
 import {
   buildQuickStartProfile,
+  clearOnboardingFlowState,
   createQuickStartProfileDraft,
   emptyProfile,
+  loadOnboardingFlowState,
   pollLatestRun,
   saveManualProfile,
+  saveOnboardingFlowState,
   triggerGeneration,
   uploadCv,
   validateCvFile,
@@ -45,13 +48,7 @@ export function OnboardingFlow({
 }) {
   const router = useRouter();
   const userId = useActiveClassroomUserId();
-  const [step, setStep] = useState<Step>(() =>
-    initialProfile
-      ? { name: "review", profile: initialProfile, isUnchanged: true }
-      : startMode === "quick"
-        ? { name: "quick", draft: createQuickStartProfileDraft(userId) }
-        : { name: "choose" }
-  );
+  const [step, setStep] = useState<Step>(() => resolveInitialStep(userId, initialProfile, startMode));
   const [submitting, setSubmitting] = useState(false);
   const generationStarted = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -61,14 +58,23 @@ export function OnboardingFlow({
     setSubmitting(false);
     generationStarted.current = false;
     pollAttempts.current = 0;
-    setStep(
-      initialProfile
-        ? { name: "review", profile: initialProfile, isUnchanged: true }
-        : startMode === "quick"
-          ? { name: "quick", draft: createQuickStartProfileDraft(userId) }
-          : { name: "choose" }
-    );
+    setStep(resolveInitialStep(userId, initialProfile, startMode));
   }, [initialProfile, startMode, userId]);
+
+  useEffect(() => {
+    if (startMode !== "quick" && !initialProfile) {
+      return;
+    }
+    if (step.name === "quick") {
+      saveOnboardingFlowState(userId, { step: "quick", draft: step.draft });
+      return;
+    }
+    if (step.name === "review") {
+      saveOnboardingFlowState(userId, { step: "review", profile: step.profile });
+      return;
+    }
+    saveOnboardingFlowState(userId, step.name);
+  }, [step, userId, startMode, initialProfile]);
 
   const updateQuickDraft = useCallback(
     <K extends keyof QuickStartProfileDraft>(key: K, value: QuickStartProfileDraft[K]) => {
@@ -134,6 +140,7 @@ export function OnboardingFlow({
         setStep({ name: "error", kind: "network_error", message: result.message });
         return;
       }
+      clearOnboardingFlowState(userId);
       if (mode === "settings") {
         router.replace("/");
         return;
@@ -199,6 +206,7 @@ export function OnboardingFlow({
         setStep({ name: "error", kind: "network_error", message: result.message });
         return;
       }
+      clearOnboardingFlowState(userId);
       if (mode === "settings") {
         router.replace("/");
         return;
@@ -472,6 +480,30 @@ function OnboardingHeader() {
       </div>
     </section>
   );
+}
+
+function resolveInitialStep(
+  userId: string,
+  initialProfile: DeveloperProfile | null,
+  startMode: "choose" | "quick"
+): Step {
+  if (initialProfile) {
+    return { name: "review", profile: initialProfile, isUnchanged: true };
+  }
+
+  if (startMode === "quick") {
+    const stored = loadOnboardingFlowState(userId);
+    if (stored?.step === "quick") {
+      return { name: "quick", draft: stored.draft };
+    }
+    if (stored?.step === "review") {
+      return { name: "review", profile: stored.profile, isUnchanged: false };
+    }
+  }
+
+  return startMode === "quick"
+    ? { name: "quick", draft: createQuickStartProfileDraft(userId) }
+    : { name: "choose" };
 }
 
 function errorTitle(kind: "invalid_file" | "extraction_failed" | "network_error") {

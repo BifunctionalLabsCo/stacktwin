@@ -1,15 +1,18 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, CheckCircle2, FileText, RotateCcw, UploadCloud } from "lucide-react";
+import { AlertCircle, CheckCircle2, FileText, RotateCcw, Sparkles, UploadCloud } from "lucide-react";
 import {
+  buildQuickStartProfile,
+  createQuickStartProfileDraft,
   emptyProfile,
   pollLatestRun,
   saveManualProfile,
   triggerGeneration,
   uploadCv,
-  validateCvFile
+  validateCvFile,
+  type QuickStartProfileDraft
 } from "../lib/onboarding";
 import { useActiveClassroomUserId } from "../lib/classroom-user";
 import type { DeveloperProfile } from "../lib/profile-types";
@@ -20,6 +23,7 @@ const MAX_POLL_ATTEMPTS = 30;
 
 type Step =
   | { name: "choose" }
+  | { name: "quick"; draft: QuickStartProfileDraft }
   | { name: "uploading"; progress: number }
   | { name: "review"; profile: DeveloperProfile; isUnchanged: boolean }
   | { name: "generating" }
@@ -32,22 +36,48 @@ type Step =
 
 export function OnboardingFlow({
   initialProfile = null,
-  mode = "onboarding"
+  mode = "onboarding",
+  startMode = "choose"
 }: {
   initialProfile?: DeveloperProfile | null;
   mode?: "onboarding" | "settings";
+  startMode?: "choose" | "quick";
 }) {
   const router = useRouter();
   const userId = useActiveClassroomUserId();
-  const [step, setStep] = useState<Step>(
+  const [step, setStep] = useState<Step>(() =>
     initialProfile
       ? { name: "review", profile: initialProfile, isUnchanged: true }
-      : { name: "choose" }
+      : startMode === "quick"
+        ? { name: "quick", draft: createQuickStartProfileDraft(userId) }
+        : { name: "choose" }
   );
   const [submitting, setSubmitting] = useState(false);
   const generationStarted = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollAttempts = useRef(0);
+
+  useEffect(() => {
+    setSubmitting(false);
+    generationStarted.current = false;
+    pollAttempts.current = 0;
+    setStep(
+      initialProfile
+        ? { name: "review", profile: initialProfile, isUnchanged: true }
+        : startMode === "quick"
+          ? { name: "quick", draft: createQuickStartProfileDraft(userId) }
+          : { name: "choose" }
+    );
+  }, [initialProfile, startMode, userId]);
+
+  const updateQuickDraft = useCallback(
+    <K extends keyof QuickStartProfileDraft>(key: K, value: QuickStartProfileDraft[K]) => {
+      setStep((current) =>
+        current.name === "quick" ? { name: "quick", draft: { ...current.draft, [key]: value } } : current
+      );
+    },
+    []
+  );
 
   const handleFileSelected = useCallback((file: File) => {
     const validationError = validateCvFile(file);
@@ -91,6 +121,34 @@ export function OnboardingFlow({
       pollUntilReady(userId);
     });
   }, [userId]);
+
+  function handleQuickStart(profileDraft: QuickStartProfileDraft) {
+    if (submitting) {
+      return;
+    }
+    setSubmitting(true);
+
+    saveManualProfile(buildQuickStartProfile(profileDraft, userId), userId).then((result) => {
+      setSubmitting(false);
+      if (!result.ok) {
+        setStep({ name: "error", kind: "network_error", message: result.message });
+        return;
+      }
+      if (mode === "settings") {
+        router.replace("/");
+        return;
+      }
+      startGeneration();
+    });
+  }
+
+  function openFullEditor(profileDraft: QuickStartProfileDraft) {
+    setStep({
+      name: "review",
+      profile: buildQuickStartProfile(profileDraft, userId),
+      isUnchanged: false
+    });
+  }
 
   function pollUntilReady(activeUserId: string) {
     pollAttempts.current += 1;
@@ -157,6 +215,15 @@ export function OnboardingFlow({
           <button
             type="button"
             className="onboardingCard"
+            onClick={() => setStep({ name: "quick", draft: createQuickStartProfileDraft(userId) })}
+          >
+            <Sparkles size={28} />
+            <h2>Quick start</h2>
+            <p>Seed a compact profile with the minimum details needed to launch a good first week.</p>
+          </button>
+          <button
+            type="button"
+            className="onboardingCard"
             onClick={() => fileInputRef.current?.click()}
           >
             <UploadCloud size={28} />
@@ -187,6 +254,118 @@ export function OnboardingFlow({
             <p>Skip the upload and fill in your role, stack, and learning goals yourself.</p>
           </button>
         </section>
+      </main>
+    );
+  }
+
+  if (step.name === "quick") {
+    return (
+      <main className="onboardingShell">
+        <OnboardingHeader />
+        <p className="privacyNote">
+          Enter the smallest useful profile first. You can expand the details later from the full
+          profile editor.
+        </p>
+        <form
+          className="reviewForm quickStartForm"
+          aria-label="Quick start profile"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleQuickStart(step.draft);
+          }}
+        >
+          <div className="reviewGrid">
+            <label htmlFor="quick-name">
+              <span>Name</span>
+              <input
+                id="quick-name"
+                type="text"
+                value={step.draft.name}
+                onChange={(event) => updateQuickDraft("name", event.target.value)}
+              />
+            </label>
+            <label htmlFor="quick-role">
+              <span>Current role</span>
+              <input
+                id="quick-role"
+                type="text"
+                value={step.draft.current_role}
+                onChange={(event) => updateQuickDraft("current_role", event.target.value)}
+              />
+            </label>
+            <label htmlFor="quick-stack" className="reviewFieldWide">
+              <span>Current stack</span>
+              <input
+                id="quick-stack"
+                type="text"
+                placeholder="TypeScript, React, Next.js"
+                value={step.draft.current_stack}
+                onChange={(event) => updateQuickDraft("current_stack", event.target.value)}
+              />
+            </label>
+            <label htmlFor="quick-goals" className="reviewFieldWide">
+              <span>Learning goals</span>
+              <input
+                id="quick-goals"
+                type="text"
+                placeholder="Ship a sharper weekly learning flow"
+                value={step.draft.learning_goals}
+                onChange={(event) => updateQuickDraft("learning_goals", event.target.value)}
+              />
+            </label>
+            <label htmlFor="quick-career" className="reviewFieldWide">
+              <span>Career direction</span>
+              <input
+                id="quick-career"
+                type="text"
+                placeholder="Build a stronger product experience with AI"
+                value={step.draft.career_direction}
+                onChange={(event) => updateQuickDraft("career_direction", event.target.value)}
+              />
+            </label>
+            <label htmlFor="quick-budget">
+              <span>Weekly time budget (hours)</span>
+              <input
+                id="quick-budget"
+                type="number"
+                min={0.5}
+                step={0.5}
+                value={step.draft.weekly_time_budget_hours}
+                onChange={(event) => updateQuickDraft("weekly_time_budget_hours", event.target.value)}
+              />
+            </label>
+            <label htmlFor="quick-format">
+              <span>Preferred format</span>
+              <select
+                id="quick-format"
+                value={step.draft.preferred_format}
+                onChange={(event) =>
+                  updateQuickDraft("preferred_format", event.target.value as QuickStartProfileDraft["preferred_format"])
+                }
+              >
+                <option value="">Default</option>
+                <option value="short_summary">Short summary</option>
+                <option value="hands_on">Hands-on</option>
+                <option value="deep_dive">Deep dive</option>
+                <option value="quiz">Quiz</option>
+                <option value="video">Video</option>
+                <option value="podcast">Podcast</option>
+              </select>
+            </label>
+          </div>
+          <div className="quickStartActions">
+            <button
+              type="button"
+              className="secondaryAction"
+              onClick={() => openFullEditor(step.draft)}
+            >
+              Open full editor
+            </button>
+            <button type="submit" className="primaryAction" disabled={submitting}>
+              {submitting ? "Creating profile..." : "Create profile and generate week"}
+            </button>
+          </div>
+        </form>
       </main>
     );
   }

@@ -1,4 +1,5 @@
 import { getClassroomUserId } from "./config";
+import { getClassroomUserLabel } from "./classroom-user";
 import type { ContentFormatValue, DeveloperProfile, ExperienceLevelValue } from "./profile-types";
 
 export const MAX_CV_FILE_SIZE_BYTES = 5 * 1024 * 1024;
@@ -201,6 +202,65 @@ export function emptyProfile(): DeveloperProfile {
     topics_to_avoid: [],
     weekly_time_budget_hours: 5,
     preferred_formats: [],
+    profile_source: "manual",
+    raw_text: null
+  };
+}
+
+export type QuickStartProfileDraft = {
+  name: string;
+  current_role: string;
+  current_stack: string;
+  learning_goals: string;
+  career_direction: string;
+  weekly_time_budget_hours: string;
+  preferred_format: ContentFormatValue | "";
+};
+
+export function createQuickStartProfileDraft(userId = getClassroomUserId()): QuickStartProfileDraft {
+  return {
+    name: getClassroomUserLabel(userId),
+    current_role: "Software Engineer",
+    current_stack: "TypeScript, React, Next.js",
+    learning_goals: "Ship a sharper weekly learning flow",
+    career_direction: "Build a stronger product experience with AI",
+    weekly_time_budget_hours: "3",
+    preferred_format: "hands_on"
+  };
+}
+
+function splitCommaList(value: string) {
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function parseBudgetHours(value: string) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 3;
+}
+
+export function buildQuickStartProfile(
+  draft: QuickStartProfileDraft,
+  userId = getClassroomUserId()
+): DeveloperProfile {
+  const stack = splitCommaList(draft.current_stack);
+  const goals = splitCommaList(draft.learning_goals);
+  return {
+    ...emptyProfile(),
+    name: draft.name.trim() || getClassroomUserLabel(userId),
+    current_role: draft.current_role.trim() || "Software Engineer",
+    current_stack: stack.length > 0 ? stack : ["TypeScript", "React", "Next.js"],
+    learning: goals.length > 0 ? goals : ["Ship a sharper weekly learning flow"],
+    domains: [],
+    certifications: [],
+    career_direction: draft.career_direction.trim() || "Build a stronger product experience with AI",
+    learning_goals: goals.length > 0 ? goals : ["Ship a sharper weekly learning flow"],
+    topics_to_track: stack.length > 0 ? stack.slice(0, 3) : ["frontend", "product design", "AI workflows"],
+    topics_to_avoid: [],
+    weekly_time_budget_hours: parseBudgetHours(draft.weekly_time_budget_hours),
+    preferred_formats: draft.preferred_format ? [draft.preferred_format] : ["hands_on", "short_summary"],
     profile_source: "manual",
     raw_text: null
   };

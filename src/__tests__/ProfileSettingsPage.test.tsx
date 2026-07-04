@@ -88,6 +88,23 @@ describe("ProfileSettingsPage missing-profile and reload states", () => {
     );
   });
 
+  it("keeps the active learner after a reload", async () => {
+    await act(async () => {
+      setClassroomUserId("soumya@gmail.com");
+    });
+
+    render(<ProfileSettingsPage />);
+
+    await waitFor(() => expect(fetchCurrentProfile).toHaveBeenCalledWith("soumya@gmail.com"));
+    expect(await screen.findByLabelText(/^name$/i)).toHaveValue("Soumya");
+
+    cleanup();
+    render(<ProfileSettingsPage />);
+
+    await waitFor(() => expect(fetchCurrentProfile).toHaveBeenCalledWith("soumya@gmail.com"));
+    expect(await screen.findByLabelText(/^name$/i)).toHaveValue("Soumya");
+  });
+
   it("reloads the saved profile when the active learner changes", async () => {
     render(<ProfileSettingsPage />);
 

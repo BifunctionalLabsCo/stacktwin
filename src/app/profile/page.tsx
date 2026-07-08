@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { fetchCurrentProfile } from "../../lib/onboarding";
 import type { DeveloperProfile } from "../../lib/profile-types";
 import { OnboardingFlow } from "../../components/OnboardingFlow";
@@ -43,7 +44,15 @@ export default function ProfileSettingsPage() {
         <section className="statePanel isError" role="alert">
           <div>
             <h2>No profile found</h2>
-            <p>Complete onboarding first to create a developer profile.</p>
+            <p>Start with a quick demo profile or open the full onboarding flow for this learner.</p>
+            <div className="profileFallbackActions">
+              <Link className="secondaryAction" href="/onboarding/?start=quick">
+                Quick start
+              </Link>
+              <Link className="secondaryAction" href="/onboarding/">
+                Full onboarding
+              </Link>
+            </div>
           </div>
         </section>
       </main>

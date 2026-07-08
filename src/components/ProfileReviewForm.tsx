@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { CONTENT_FORMATS, EXPERIENCE_LEVELS } from "../lib/onboarding";
 import type { DeveloperProfile } from "../lib/profile-types";
 
@@ -37,6 +37,10 @@ export function ProfileReviewForm({
 }) {
   const [draft, setDraft] = useState(profile);
   const idPrefix = useId();
+
+  useEffect(() => {
+    setDraft(profile);
+  }, [profile]);
 
   function update<K extends keyof DeveloperProfile>(key: K, value: DeveloperProfile[K]) {
     setDraft((current) => ({ ...current, [key]: value }));

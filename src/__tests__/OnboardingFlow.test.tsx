@@ -1,7 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OnboardingFlow } from "../components/OnboardingFlow";
+import { setClassroomUserId } from "../lib/classroom-user";
 import { emptyProfile } from "../lib/onboarding";
 
 const replace = vi.fn();
@@ -75,6 +76,71 @@ describe("OnboardingFlow manual entry path", () => {
       expect.stringContaining("/api/profile/manual"),
       expect.objectContaining({ method: "POST" })
     );
+  });
+});
+
+describe("OnboardingFlow quick start path", () => {
+  it("saves a compact seeded profile and starts generation", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("/api/profile/manual")) {
+        const body = JSON.parse(init?.body as string) as Record<string, unknown>;
+        expect(body.current_role).toBe("Software Engineer");
+        expect(body.current_stack).toEqual(["TypeScript", "React", "Next.js"]);
+        expect(body.preferred_formats).toEqual(["hands_on"]);
+        return jsonResponse({ status: "ok", user_id: "demo", profile: body });
+      }
+      if (url.includes("/api/digest/runs/latest")) {
+        return jsonResponse({ learner_status: "ready" });
+      }
+      if (url.includes("/api/digest/run")) {
+        return jsonResponse({ status: "computed" });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<OnboardingFlow startMode="quick" />);
+
+    expect(await screen.findByLabelText(/quick start profile/i)).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText(/^name$/i));
+    await user.type(screen.getByLabelText(/^name$/i), "Ada Lovelace");
+    await user.type(screen.getByLabelText(/learning goals/i), ", deepen product instincts");
+    await user.click(screen.getByRole("button", { name: /create profile and generate week/i }));
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/profile/manual"),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("restores an in-progress draft per active learner", async () => {
+    const user = userEvent.setup();
+    setClassroomUserId("demo@stacktwin.dev");
+
+    render(<OnboardingFlow startMode="quick" />);
+
+    await user.clear(screen.getByLabelText(/^name$/i));
+    await user.type(screen.getByLabelText(/^name$/i), "Demo Draft");
+    await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toHaveValue("Demo Draft"));
+
+    await act(async () => {
+      setClassroomUserId("soumya@gmail.com");
+    });
+
+    await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toHaveValue("Soumya"));
+
+    await user.clear(screen.getByLabelText(/^name$/i));
+    await user.type(screen.getByLabelText(/^name$/i), "Soumya Draft");
+    await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toHaveValue("Soumya Draft"));
+
+    await act(async () => {
+      setClassroomUserId("demo@stacktwin.dev");
+    });
+
+    await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toHaveValue("Demo Draft"));
   });
 });
 

@@ -13,7 +13,7 @@ from stacktwin.profile.schema import (
 )
 
 NEBIUS_API_URL = os.getenv("NEBIUS_API_URL", "https://api.studio.nebius.com/v1")
-NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY", "")
+NEBIUS_API_KEY = os.getenv("NEBIUS_TOKEN") or os.getenv("NEBIUS_API_KEY", "")
 MODEL = os.getenv("NEBIUS_MODEL", "meta-llama/Meta-Llama-3.1-70B-Instruct")
 
 DIGEST_SIZE = int(os.getenv("DIGEST_SIZE", "10"))  # articles in weekly digest

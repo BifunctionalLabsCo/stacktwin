@@ -12,7 +12,7 @@ from stacktwin.pipeline.sources.youtube import YouTubeSource
 
 SOURCE_LIMIT = int(os.getenv("SOURCE_LIMIT", "50"))
 NEBIUS_API_URL = os.getenv("NEBIUS_API_URL", "https://api.studio.nebius.ai/v1")
-NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY", "")
+NEBIUS_API_KEY = os.getenv("NEBIUS_TOKEN") or os.getenv("NEBIUS_API_KEY", "")
 MODEL = os.getenv("NEBIUS_MODEL", "meta-llama/Meta-Llama-3.1-70B-Instruct")
 
 TAG_INDEX_PROMPT = """

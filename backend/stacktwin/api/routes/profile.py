@@ -56,7 +56,7 @@ async def upload_profile(
         if not raw_text or len(raw_text.strip()) < 50:
             raise HTTPException(status_code=422, detail="Could not extract enough text from file")
 
-        api_key = os.getenv("NEBIUS_API_KEY", "")
+        api_key = os.getenv("NEBIUS_TOKEN") or os.getenv("NEBIUS_API_KEY", "")
         if api_key:
             from stacktwin.profile.builder import build_profile_from_text
 

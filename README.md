@@ -74,6 +74,51 @@ The production classroom reads `GET /api/track/current` and week-scoped lesson r
 
 ## Pipeline Configuration
 
+### Nebius development endpoint
+
+StackTwin currently sends synchronous OpenAI-compatible requests to a Nebius
+Serverless AI Endpoint. Configure the endpoint's public URL with `/v1`, its auth
+token, and the exact served model ID:
+
+```bash
+NEBIUS_API_URL=https://<endpoint-public-host>/v1
+NEBIUS_TOKEN=<endpoint-token>
+NEBIUS_MODEL=Qwen/Qwen3-0.6B
+```
+
+The development endpoint uses the pinned vLLM image and command layout from the
+Nebius deployment guide:
+
+```bash
+nebius ai endpoint create \
+  --name stacktwin-dev-endpoint-v2 \
+  --image vllm/vllm-openai:v0.18.0-cu130 \
+  --container-command "python3 -m vllm.entrypoints.openai.api_server" \
+  --args "--model Qwen/Qwen3-0.6B --host 0.0.0.0 --port 8000 --max-model-len 4096" \
+  --platform gpu-l40s-a \
+  --preset 1gpu-8vcpu-32gb \
+  --disk-size 100Gi \
+  --shm-size 16Gi \
+  --subnet-id <subnet-id> \
+  --preemptible \
+  --container-port 8000 \
+  --public \
+  --auth token \
+  --token "$NEBIUS_TOKEN"
+```
+
+Wait for both the Nebius endpoint state and the vLLM server startup logs before
+testing routes. During model loading and CUDA graph warmup, the public tunnel can
+temporarily return a plain-text `404` or an nginx `502` even though the VM is
+running. A ready endpoint returns `200` from `/health`, JSON from `/v1/models`,
+and OpenAI-compatible JSON from `/v1/chat/completions`.
+
+The planned large-model evaluation is
+`Qwen/Qwen3-235B-A22B-Thinking-2507`; the intended production model is
+`NousResearch/Hermes-4-70B`. Do not use either model for endpoint plumbing tests.
+A future Nebius Job will execute the finite weekly pipeline, while the Endpoint
+continues to provide reusable model inference until that architecture changes.
+
 Two environment variables control how much work the pipeline does each week:
 
 | Variable | Default | Effect |

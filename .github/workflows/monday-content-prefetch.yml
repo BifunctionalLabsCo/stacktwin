@@ -1,0 +1,16 @@
+name: Monday content prefetch
+
+on:
+  schedule:
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
+
+jobs:
+  prefetch:
+    if: ${{ secrets.STACKTWIN_PREFETCH_URL != '' && secrets.STACKTWIN_SCHEDULE_TOKEN != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refresh the shared weekly content pool
+        run: |
+          curl --fail-with-body --request POST "${{ secrets.STACKTWIN_PREFETCH_URL }}" \
+            --header "X-StackTwin-Schedule-Token: ${{ secrets.STACKTWIN_SCHEDULE_TOKEN }}"

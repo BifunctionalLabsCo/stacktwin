@@ -3,7 +3,11 @@ from pathlib import Path
 from subprocess import CompletedProcess
 
 from stacktwin.api.routes import digest
-from stacktwin.jobs.nebius import SubmittedJob, submit_weekly_pipeline_job
+from stacktwin.jobs.nebius import (
+    SubmittedJob,
+    submit_weekly_content_prefetch_job,
+    submit_weekly_pipeline_job,
+)
 
 
 def test_submit_weekly_pipeline_job_builds_finite_job_command(monkeypatch, tmp_path: Path):
@@ -60,3 +64,31 @@ def test_pipeline_route_returns_accepted_job(monkeypatch):
         "job_name": "stacktwin-weekly-test",
         "job_state": "STARTING",
     }
+
+
+def test_submit_weekly_content_prefetch_job_builds_prefetch_command(monkeypatch, tmp_path: Path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("STORAGE_BACKEND=nebius\n")
+    monkeypatch.setenv("STACKTWIN_JOB_IMAGE", "registry.example/stacktwin-job:test")
+    monkeypatch.setenv("STACKTWIN_JOB_SUBNET_ID", "subnet-test")
+    monkeypatch.setenv("STACKTWIN_JOB_ENV_FILE", str(env_file))
+    monkeypatch.setenv("NEBIUS_CLI", "/bin/nebius")
+
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        return CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps({"metadata": {"id": "job-test", "name": "prefetch"}}),
+            stderr="",
+        )
+
+    monkeypatch.setattr("stacktwin.jobs.nebius.subprocess.run", fake_run)
+
+    submit_weekly_content_prefetch_job()
+
+    command = captured["command"]
+    assert command[command.index("--args") + 1] == "--prefetch-weekly-content"
+    assert command[command.index("--name") + 1].startswith("stacktwin-prefetch-")

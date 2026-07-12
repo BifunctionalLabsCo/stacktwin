@@ -95,7 +95,8 @@ def _call_nebius_for_tags(articles_batch: list[Article]) -> list[dict]:
 
     article_list = "\n".join(
         [
-            f"{i + 1}. URL: {a.url}\n   Title: {a.title}\n   Existing tags: {', '.join(a.tags) or 'none'}"
+            f"{i + 1}. URL: {a.url}\n   Title: {a.title}\n"
+            f"   Existing tags: {', '.join(a.tags) or 'none'}"
             for i, a in enumerate(articles_batch)
         ]
     )
@@ -174,13 +175,24 @@ def build_tag_index(articles: list[Article]) -> dict[str, list[str]]:
 
 
 def load_or_build_tag_index(
-    articles: list[Article], cache_dir: str = "outputs"
+    articles: list[Article], cache_dir: str = "outputs", storage=None, week_start: str | None = None
 ) -> dict[str, list[str]]:
     """
     Load this week's tag index if it exists, otherwise build it from articles.
 
     Cache file pattern: outputs/articles_YYYYMMDD_tags.json
     """
+    if storage is not None:
+        week = week_start or _week_start()
+        snapshot = storage.load_content_snapshot(week)
+        if snapshot and snapshot.get("tag_index") is not None:
+            print(f"[ingest] shared tag index cache hit for week of {week}")
+            return snapshot["tag_index"]
+        tag_index = build_tag_index(articles)
+        storage.save_content_snapshot(week, [article.to_dict() for article in articles], tag_index)
+        print(f"[ingest] shared tag index saved for week of {week}")
+        return tag_index
+
     today = datetime.now(UTC)
     week_monday = (today - timedelta(days=today.weekday())).strftime("%Y%m%d")
     tag_index_path = os.path.join(cache_dir, f"articles_{week_monday}_tags.json")
@@ -206,7 +218,12 @@ if __name__ == "__main__":
     print(f"\nDone. {len(articles)} articles saved to {path}")
 
 
-def load_or_fetch(limit_per_source: int = 50, cache_dir: str = "outputs") -> list[Article]:
+def load_or_fetch(
+    limit_per_source: int = 50,
+    cache_dir: str = "outputs",
+    storage=None,
+    week_start: str | None = None,
+) -> list[Article]:
     """
     Load this week's article cache if it exists, otherwise fetch fresh.
 
@@ -218,6 +235,17 @@ def load_or_fetch(limit_per_source: int = 50, cache_dir: str = "outputs") -> lis
 
     Cache file pattern: outputs/articles_YYYYMMDD_*.json
     """
+    if storage is not None:
+        week = week_start or _week_start()
+        snapshot = storage.load_content_snapshot(week)
+        if snapshot:
+            print(f"[ingest] shared content cache hit for week of {week}")
+            return [Article(**item) for item in snapshot["articles"]]
+        articles = fetch_all(limit_per_source=limit_per_source)
+        storage.save_content_snapshot(week, [article.to_dict() for article in articles], None)
+        print(f"[ingest] shared content cache saved for week of {week}")
+        return articles
+
     today = datetime.now(UTC)
     week_monday = (today - timedelta(days=today.weekday())).strftime("%Y%m%d")
 
@@ -252,3 +280,18 @@ def load_or_fetch(limit_per_source: int = 50, cache_dir: str = "outputs") -> lis
         json.dump([a.to_dict() for a in articles], f, indent=2, ensure_ascii=False)
     print(f"[ingest] saved to {filepath}")
     return articles
+
+
+def prefetch_weekly_content(storage, limit_per_source: int = SOURCE_LIMIT) -> dict[str, int | str]:
+    """Fetch and tag the shared weekly source pool without scoring any learner profile."""
+    week_start = _week_start()
+    articles = load_or_fetch(
+        limit_per_source=limit_per_source, storage=storage, week_start=week_start
+    )
+    tag_index = load_or_build_tag_index(articles, storage=storage, week_start=week_start)
+    return {"week_start": week_start, "articles": len(articles), "tags": len(tag_index)}
+
+
+def _week_start() -> str:
+    today = datetime.now(UTC).date()
+    return (today - timedelta(days=today.weekday())).isoformat()

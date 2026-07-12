@@ -64,9 +64,9 @@ The compiled app opens on the learner's latest generated weekly track. It includ
 
 The nav includes a learner switcher that changes the active `user_id` in-browser without a reload. By default the app ships with a small demo set:
 
-- `demo@stacktwin.dev`
-- `soumya@gmail.com`
-- `john@company.com`
+- `engineer@stacktwin.dev`
+- `creator@stacktwin.dev`
+- `researcher@stacktwin.dev`
 
 Set `NEXT_PUBLIC_STACKTWIN_DEMO_USERS` before `npm run build` to replace that list. It accepts either a JSON array of `{ id, label, description }` objects or a comma-separated `id|label|description` list. The active learner persists in `localStorage` for the browser session.
 
@@ -80,6 +80,19 @@ Production-like development runs use a finite Nebius Serverless AI Job instead
 of an always-on model endpoint. Each Job starts local vLLM, waits for the model,
 runs the complete weekly pipeline for one learner, persists its results to Nebius
 Object Storage, terminates vLLM, and exits. GPU billing ends with the Job.
+
+### Monday shared-content prefetch
+
+At 00:00 UTC each Monday, `.github/workflows/monday-content-prefetch.yml` calls
+`POST /api/digest/prefetch`. It fetches and tags the shared weekly source pool,
+then stores it in the configured storage backend. Triggering a learner pipeline
+later in the week reuses that pool and only performs profile-specific scoring,
+digest generation, and lesson creation.
+
+Configure these repository secrets before enabling the workflow:
+
+- `STACKTWIN_PREFETCH_URL`: deployed `https://…/api/digest/prefetch` URL.
+- `STACKTWIN_SCHEDULE_TOKEN`: matches the deployed `STACKTWIN_SCHEDULE_TOKEN`.
 
 Create a Nebius Container Registry once, configure its Docker credential helper,
 then build and push the Job image:

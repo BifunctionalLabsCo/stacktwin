@@ -93,7 +93,7 @@ describe("OnboardingFlow quick start path", () => {
     await user.click(screen.getByRole("button", { name: /creator/i }));
 
     expect(await screen.findByLabelText(/quick start profile/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^current role$/i)).toHaveValue("Product Creator");
+    expect(screen.getByLabelText(/^current role$/i)).toHaveValue("AI Content Creator");
   });
 
   it("saves a compact seeded profile and starts generation", async () => {
@@ -101,8 +101,8 @@ describe("OnboardingFlow quick start path", () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url.includes("/api/profile/manual")) {
         const body = JSON.parse(init?.body as string) as Record<string, unknown>;
-        expect(body.current_role).toBe("Software Engineer");
-        expect(body.current_stack).toEqual(["TypeScript", "React", "Next.js"]);
+        expect(body.current_role).toBe("Full-stack Engineer");
+        expect(body.current_stack).toEqual(["FastAPI", "Supabase", "React"]);
         expect(body.preferred_formats).toEqual(["hands_on"]);
         return jsonResponse({ status: "ok", user_id: "demo", profile: body });
       }

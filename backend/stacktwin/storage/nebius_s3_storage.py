@@ -72,6 +72,9 @@ class NebiusS3Storage(StorageBackend):
         # created_at first so lexicographic key sort matches chronological order.
         return self._key(f"runs/{self._user_key(user_id)}/{run.created_at}_{run.run_id}.json")
 
+    def _content_snapshot_key(self, week_start: str) -> str:
+        return self._key(f"content/{week_start}.json")
+
     def _put_json(self, key: str, data: dict) -> None:
         self.client.put_object(
             Bucket=self.bucket,
@@ -285,6 +288,19 @@ class NebiusS3Storage(StorageBackend):
                 f"[storage] cleared {len(keys_to_delete)} scored checkpoint objects for "
                 f"{user_id}/{week_start}"
             )
+
+    def save_content_snapshot(
+        self, week_start: str, articles: list[dict], tag_index: dict[str, list[str]] | None
+    ) -> str:
+        key = self._content_snapshot_key(week_start)
+        self._put_json(
+            key,
+            {"week_start": week_start, "articles": articles, "tag_index": tag_index},
+        )
+        return f"s3://{self.bucket}/{key}"
+
+    def load_content_snapshot(self, week_start: str) -> dict | None:
+        return self._get_json(self._content_snapshot_key(week_start))
 
     def _find_run_key(self, user_id: str, run_id: str) -> str | None:
         for key in self._run_keys(user_id):

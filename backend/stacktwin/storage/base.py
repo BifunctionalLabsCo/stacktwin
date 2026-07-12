@@ -124,3 +124,15 @@ class StorageBackend(ABC):
         needed for crash recovery and are dead weight once the run succeeds.
         """
         pass
+
+    @abstractmethod
+    def save_content_snapshot(
+        self, week_start: str, articles: list[dict], tag_index: dict[str, list[str]] | None
+    ) -> str:
+        """Persist the shared weekly source pool and its optional normalized tag index."""
+        pass
+
+    @abstractmethod
+    def load_content_snapshot(self, week_start: str) -> dict | None:
+        """Load the shared weekly source pool, or None when it has not been prefetched."""
+        pass

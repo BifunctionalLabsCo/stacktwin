@@ -231,43 +231,43 @@ export const PROFILE_PRESETS: Array<{
   {
     id: "engineer",
     label: "Engineer",
-    description: "Build practical depth across systems, tooling, and product engineering."
+    description: "Build and ship full-stack products with FastAPI, Supabase, and React."
   },
   {
     id: "creator",
     label: "Creator",
-    description: "Turn ideas into clear, useful products, stories, and experiments."
+    description: "Use new AI tooling and automations to create and distribute better work."
   },
   {
     id: "researcher",
     label: "Researcher",
-    description: "Follow evidence, emerging ideas, and the questions behind the headlines."
+    description: "Follow state-of-the-art AI papers, fine-tuning methods, and deep learning."
   }
 ];
 
 const PROFILE_PRESET_DRAFTS: Record<ProfilePreset, Omit<QuickStartProfileDraft, "name">> = {
   engineer: {
-    current_role: "Software Engineer",
-    current_stack: "TypeScript, React, Next.js",
-    learning_goals: "Ship better systems and stronger product experiences",
-    career_direction: "Grow as a high-leverage product engineer",
+    current_role: "Full-stack Engineer",
+    current_stack: "FastAPI, Supabase, React",
+    learning_goals: "Build and ship full-stack products with FastAPI, Supabase, and React",
+    career_direction: "Ship faster with pragmatic full-stack architecture",
     weekly_time_budget_hours: "3",
     preferred_format: "hands_on"
   },
   creator: {
-    current_role: "Product Creator",
-    current_stack: "Figma, storytelling, no-code tools",
-    learning_goals: "Develop sharper ideas and ship more compelling work",
-    career_direction: "Build a distinctive creative practice with technology",
+    current_role: "AI Content Creator",
+    current_stack: "Claude, ChatGPT, n8n, Zapier",
+    learning_goals: "Use new AI tools and automation workflows to create and distribute better content",
+    career_direction: "Build a high-leverage creative practice with AI automations",
     weekly_time_budget_hours: "3",
-    preferred_format: "short_summary"
+    preferred_format: "hands_on"
   },
   researcher: {
-    current_role: "Technology Researcher",
-    current_stack: "Python, notebooks, data analysis",
-    learning_goals: "Turn new research into useful mental models and decisions",
-    career_direction: "Develop trusted insight across emerging technology",
-    weekly_time_budget_hours: "4",
+    current_role: "AI Researcher",
+    current_stack: "PyTorch, Hugging Face, JAX",
+    learning_goals: "Stay current on state-of-the-art AI research, fine-tuning, and deep learning",
+    career_direction: "Develop research judgment and apply frontier AI work responsibly",
+    weekly_time_budget_hours: "5",
     preferred_format: "deep_dive"
   }
 };

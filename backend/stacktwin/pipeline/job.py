@@ -12,7 +12,9 @@ from stacktwin.llm import model_for, model_mode
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run one StackTwin weekly pipeline job")
-    parser.add_argument("--user-id", required=True)
+    command = parser.add_mutually_exclusive_group(required=True)
+    command.add_argument("--user-id")
+    command.add_argument("--prefetch-weekly-content", action="store_true")
     args = parser.parse_args()
 
     load_dotenv(os.getenv("STACKTWIN_JOB_ENV_PATH", "/run/secrets/stacktwin.env"))
@@ -49,10 +51,16 @@ def main() -> int:
     )
     try:
         _wait_for_vllm(server, f"{base_url}/health")
-        from stacktwin.api.routes.digest import run_pipeline
+        if args.prefetch_weekly_content:
+            from stacktwin.pipeline.ingest import prefetch_weekly_content
+            from stacktwin.storage.factory import get_storage
 
-        response = run_pipeline(user_id=args.user_id)
-        print(response.body.decode("utf-8"), flush=True)
+            print(prefetch_weekly_content(get_storage()), flush=True)
+        else:
+            from stacktwin.api.routes.digest import run_pipeline
+
+            response = run_pipeline(user_id=args.user_id)
+            print(response.body.decode("utf-8"), flush=True)
         return 0
     finally:
         server.terminate()

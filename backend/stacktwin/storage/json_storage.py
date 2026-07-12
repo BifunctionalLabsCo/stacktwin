@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import UTC, datetime
 
 from stacktwin.learning.schema import WeeklyTrack
 from stacktwin.pipeline.run import PipelineRun
@@ -52,6 +53,9 @@ class JSONStorage(StorageBackend):
     def _runs_path(self, user_id: str) -> str:
         filename = f"{self._safe_user_id(user_id)}_runs.json"
         return os.path.join(self.outputs_dir, filename)
+
+    def _content_snapshot_path(self, week_start: str) -> str:
+        return os.path.join(self.outputs_dir, f"content_{week_start}.json")
 
     def save_profile(
         self,
@@ -256,11 +260,37 @@ class JSONStorage(StorageBackend):
             shutil.rmtree(scored_dir)
             print(f"[storage] cleared scored checkpoint: {scored_dir}")
             # Remove parent dirs (user, then scored root) if now empty
-            for parent in [os.path.dirname(scored_dir), os.path.dirname(os.path.dirname(scored_dir))]:
+            parents = [os.path.dirname(scored_dir), os.path.dirname(os.path.dirname(scored_dir))]
+            for parent in parents:
                 try:
                     os.rmdir(parent)
                 except OSError:
                     break  # not empty or doesn't exist — stop
+
+    def save_content_snapshot(
+        self, week_start: str, articles: list[dict], tag_index: dict[str, list[str]] | None
+    ) -> str:
+        path = self._content_snapshot_path(week_start)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "week_start": week_start,
+                    "fetched_at": datetime.now(UTC).isoformat(),
+                    "articles": articles,
+                    "tag_index": tag_index,
+                },
+                f,
+                indent=2,
+                ensure_ascii=False,
+            )
+        return path
+
+    def load_content_snapshot(self, week_start: str) -> dict | None:
+        path = self._content_snapshot_path(week_start)
+        if not os.path.exists(path):
+            return None
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
 
     def _track_files(self, user_id: str) -> list[str]:
         prefix = f"{self._safe_user_id(user_id)}_track_"

@@ -1,3 +1,4 @@
+import hmac
 import json
 import os
 import subprocess
@@ -6,13 +7,18 @@ import uuid
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from stacktwin.jobs.nebius import submit_weekly_pipeline_job
+from stacktwin.jobs.nebius import submit_weekly_content_prefetch_job, submit_weekly_pipeline_job
 from stacktwin.learning.builder import build_weekly_track
 from stacktwin.pipeline.digest import DIGEST_SIZE, build_digest
-from stacktwin.pipeline.ingest import SOURCE_LIMIT, load_or_build_tag_index, load_or_fetch
+from stacktwin.pipeline.ingest import (
+    SOURCE_LIMIT,
+    load_or_build_tag_index,
+    load_or_fetch,
+    prefetch_weekly_content,
+)
 from stacktwin.pipeline.run import (
     PipelineRun,
     RunStage,
@@ -33,6 +39,30 @@ router = APIRouter()
 # execution.
 
 MAX_RUN_HISTORY = 20
+
+
+@router.post("/prefetch")
+def prefetch_content(x_stacktwin_schedule_token: str | None = Header(default=None)):
+    """Refresh the shared weekly source pool; no learner scoring or lesson generation occurs."""
+    expected_token = os.getenv("STACKTWIN_SCHEDULE_TOKEN")
+    if not expected_token:
+        raise HTTPException(status_code=503, detail="Weekly prefetch is not configured.")
+    if not x_stacktwin_schedule_token or not hmac.compare_digest(
+        x_stacktwin_schedule_token, expected_token
+    ):
+        raise HTTPException(status_code=401, detail="Invalid schedule token.")
+
+    if os.getenv("STACKTWIN_PIPELINE_EXECUTION", "local") == "nebius_job":
+        try:
+            job = submit_weekly_content_prefetch_job()
+        except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
+            raise HTTPException(status_code=502, detail=sanitize_failure_summary(error)) from error
+        return JSONResponse(
+            status_code=202,
+            content={"status": "submitted", "job_id": job.job_id, "job_name": job.name},
+        )
+
+    return JSONResponse(content={"status": "prefetched", **prefetch_weekly_content(get_storage())})
 
 
 def _log(run_id: str, stage: str, message: str) -> None:
@@ -148,7 +178,9 @@ def run_pipeline(user_id: str = Query(..., description="User email address")):
 
         _transition(storage, run, "ingesting")
         ingest_started = time.monotonic()
-        articles = load_or_fetch(limit_per_source=SOURCE_LIMIT)
+        articles = load_or_fetch(
+            limit_per_source=SOURCE_LIMIT, storage=storage, week_start=week_start
+        )
         ingest_duration_ms = int((time.monotonic() - ingest_started) * 1000)
         run.sources = _summarize_sources(articles, ingest_duration_ms)
         storage.save_run(run)
@@ -163,7 +195,7 @@ def run_pipeline(user_id: str = Query(..., description="User email address")):
                 run.run_id, "scoring", f"checkpoint: {len(already_scored)} articles already scored"
             )
 
-        tag_index = load_or_build_tag_index(articles)
+        tag_index = load_or_build_tag_index(articles, storage=storage, week_start=week_start)
         filtered = filter_by_tags(articles, profile, tag_index)
 
         def _persist_scored(article: Article, score: ArticleScore) -> None:

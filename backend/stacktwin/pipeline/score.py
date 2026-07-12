@@ -1,14 +1,16 @@
-import os
 import json
-import httpx
-from typing import Callable
-from stacktwin.pipeline.sources.base import Article
-from stacktwin.profile.schema import DeveloperProfile, ArticleScore
+import os
+from collections.abc import Callable
 
+import httpx
+
+from stacktwin.llm import model_for
+from stacktwin.pipeline.sources.base import Article
+from stacktwin.profile.schema import ArticleScore, DeveloperProfile
 
 NEBIUS_API_URL = os.getenv("NEBIUS_API_URL", "https://api.studio.nebius.com/v1")
 NEBIUS_API_KEY = os.getenv("NEBIUS_TOKEN") or os.getenv("NEBIUS_API_KEY", "")
-MODEL = os.getenv("NEBIUS_MODEL", "meta-llama/Meta-Llama-3.1-70B-Instruct")
+MODEL = model_for("map")
 
 
 SCORING_PROMPT = """
@@ -47,16 +49,16 @@ Scoring rules:
 
 def _build_profile_summary(profile: DeveloperProfile) -> str:
     return f"""
-Name: {profile.name or 'Developer'}
-Role: {profile.current_role or 'Software Engineer'}
-Experience: {profile.experience_years or '?'} years ({profile.seniority or 'mid'} level)
-Current stack: {', '.join(profile.current_stack) or 'not specified'}
-Learning: {', '.join(profile.learning) or 'not specified'}
-Domains: {', '.join(profile.domains) or 'not specified'}
-Career direction: {profile.career_direction or 'not specified'}
-Learning goals: {', '.join(profile.learning_goals) or 'not specified'}
+Name: {profile.name or "Developer"}
+Role: {profile.current_role or "Software Engineer"}
+Experience: {profile.experience_years or "?"} years ({profile.seniority or "mid"} level)
+Current stack: {", ".join(profile.current_stack) or "not specified"}
+Learning: {", ".join(profile.learning) or "not specified"}
+Domains: {", ".join(profile.domains) or "not specified"}
+Career direction: {profile.career_direction or "not specified"}
+Learning goals: {", ".join(profile.learning_goals) or "not specified"}
 Weekly time budget: {profile.weekly_time_budget_hours} hours
-Topics to avoid: {', '.join(profile.topics_to_avoid) or 'none'}
+Topics to avoid: {", ".join(profile.topics_to_avoid) or "none"}
 """.strip()
 
 
@@ -65,8 +67,8 @@ def _build_article_summary(article: Article) -> str:
 Title: {article.title}
 Source: {article.source}
 URL: {article.url}
-Summary: {article.summary or 'no summary available'}
-Tags: {', '.join(article.tags) or 'none'}
+Summary: {article.summary or "no summary available"}
+Tags: {", ".join(article.tags) or "none"}
 Score/reactions: {article.score}
 """.strip()
 
@@ -88,7 +90,7 @@ def _stub_score(article: Article) -> ArticleScore:
         time_cost_minutes=5,
         overall=0.5,
         why_this_matters="Stub score — Nebius API key not set yet",
-        recommended_action="save_for_later"
+        recommended_action="save_for_later",
     )
 
 
@@ -112,22 +114,16 @@ def score_article(article: Article, profile: DeveloperProfile) -> ArticleScore:
                 "content": (
                     f"Developer profile:\n{_build_profile_summary(profile)}"
                     f"\n\nArticle:\n{_build_article_summary(article)}"
-                )
-            }
-        ]
+                ),
+            },
+        ],
     }
 
-    headers = {
-        "Authorization": f"Bearer {NEBIUS_API_KEY}",
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": f"Bearer {NEBIUS_API_KEY}", "Content-Type": "application/json"}
 
     try:
         response = httpx.post(
-            f"{NEBIUS_API_URL}/chat/completions",
-            json=payload,
-            headers=headers,
-            timeout=30.0
+            f"{NEBIUS_API_URL}/chat/completions", json=payload, headers=headers, timeout=30.0
         )
         response.raise_for_status()
         raw = response.json()["choices"][0]["message"]["content"].strip()

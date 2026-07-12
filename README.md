@@ -74,50 +74,67 @@ The production classroom reads `GET /api/track/current` and week-scoped lesson r
 
 ## Pipeline Configuration
 
-### Nebius development endpoint
+### Nebius weekly pipeline Job
 
-StackTwin currently sends synchronous OpenAI-compatible requests to a Nebius
-Serverless AI Endpoint. Configure the endpoint's public URL with `/v1`, its auth
-token, and the exact served model ID:
+Production-like development runs use a finite Nebius Serverless AI Job instead
+of an always-on model endpoint. Each Job starts local vLLM, waits for the model,
+runs the complete weekly pipeline for one learner, persists its results to Nebius
+Object Storage, terminates vLLM, and exits. GPU billing ends with the Job.
 
-```bash
-NEBIUS_API_URL=https://<endpoint-public-host>/v1
-NEBIUS_TOKEN=<endpoint-token>
-NEBIUS_MODEL=Qwen/Qwen3-0.6B
-```
-
-The development endpoint uses the pinned vLLM image and command layout from the
-Nebius deployment guide:
+Create a Nebius Container Registry once, configure its Docker credential helper,
+then build and push the Job image:
 
 ```bash
-nebius ai endpoint create \
-  --name stacktwin-dev-endpoint-v2 \
-  --image vllm/vllm-openai:v0.18.0-cu130 \
-  --container-command "python3 -m vllm.entrypoints.openai.api_server" \
-  --args "--model Qwen/Qwen3-0.6B --host 0.0.0.0 --port 8000 --max-model-len 4096" \
-  --platform gpu-l40s-a \
-  --preset 1gpu-8vcpu-32gb \
-  --disk-size 100Gi \
-  --shm-size 16Gi \
-  --subnet-id <subnet-id> \
-  --preemptible \
-  --container-port 8000 \
-  --public \
-  --auth token \
-  --token "$NEBIUS_TOKEN"
+nebius registry create --name stacktwin
+nebius registry configure-helper
+
+docker build \
+  --platform linux/amd64 \
+  -f backend/stacktwin/pipeline/Dockerfile \
+  -t cr.eu-north1.nebius.cloud/<registry-path>/stacktwin-job:dev \
+  .
+docker push cr.eu-north1.nebius.cloud/<registry-path>/stacktwin-job:dev
 ```
 
-Wait for both the Nebius endpoint state and the vLLM server startup logs before
-testing routes. During model loading and CUDA graph warmup, the public tunnel can
-temporarily return a plain-text `404` or an nginx `502` even though the VM is
-running. A ready endpoint returns `200` from `/health`, JSON from `/v1/models`,
-and OpenAI-compatible JSON from `/v1/chat/completions`.
+Configure `.env` with the image, subnet, model, and Object Storage credentials:
 
-The planned large-model evaluation is
-`Qwen/Qwen3-235B-A22B-Thinking-2507`; the intended production model is
-`NousResearch/Hermes-4-70B`. Do not use either model for endpoint plumbing tests.
-A future Nebius Job will execute the finite weekly pipeline, while the Endpoint
-continues to provide reusable model inference until that architecture changes.
+```bash
+STACKTWIN_PIPELINE_EXECUTION=nebius_job
+STACKTWIN_JOB_IMAGE=cr.eu-north1.nebius.cloud/<registry-path>/stacktwin-job:dev
+STACKTWIN_JOB_SUBNET_ID=<subnet-id>
+STACKTWIN_JOB_ENV_FILE=.env
+NEBIUS_MODEL_MODE=test
+NEBIUS_MODEL_TEST=Qwen/Qwen3-0.6B
+NEBIUS_MODEL_MAP=NousResearch/Hermes-4-70B
+NEBIUS_MODEL_RED=Qwen/Qwen3-235B-A22B-Thinking-2507
+STORAGE_BACKEND=nebius
+```
+
+`NEBIUS_MODEL_MODE=test` forces `NEBIUS_MODEL_TEST` for every LLM adapter:
+profile preparation, tag normalization, scoring, summaries, explanations, and
+quizzes. This guarantees that plumbing tests load only the small Qwen model.
+
+Production routing is prepared but deliberately not enabled in the single-model
+Job. In `prod` mode, map/preparation adapters resolve `NEBIUS_MODEL_MAP` and
+reduce/generation adapters resolve `NEBIUS_MODEL_RED`. Those models require
+different, substantially larger GPU presets, so production execution will split
+them into separate Job phases rather than loading both into the test Job.
+
+The API process needs the Nebius CLI installed and authenticated. A pipeline
+trigger submits the Job and returns `202 Accepted` with its ID:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/digest/run?user_id=<learner-email>"
+nebius ai job logs <job-id> --follow
+nebius ai job get <job-id>
+```
+
+For development, the launcher injects the configured local `.env` as a read-only
+Job file. Never commit that file. Production should replace file injection with
+MysteryBox-backed `--env-secret` values.
+
+Do not use the production models for Job plumbing tests. Resize the GPU presets
+and implement separate map/reduce phases before setting `NEBIUS_MODEL_MODE=prod`.
 
 Two environment variables control how much work the pipeline does each week:
 

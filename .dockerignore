@@ -1,0 +1,9 @@
+.git
+.env
+.venv
+.pytest_cache
+.ruff_cache
+outputs
+profiles
+src
+tests

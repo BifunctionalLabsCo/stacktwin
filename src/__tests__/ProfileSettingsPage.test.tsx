@@ -7,10 +7,10 @@ import type { DeveloperProfile } from "../lib/profile-types";
 const replace = vi.fn();
 
 const { fetchCurrentProfile } = vi.hoisted(() => ({
-  fetchCurrentProfile: vi.fn(async (userId: string): Promise<DeveloperProfile | null> => {
-    if (userId === "demo@stacktwin.dev") {
+  fetchCurrentProfile: vi.fn(async (userId?: string): Promise<DeveloperProfile | null> => {
+    if (userId === "engineer@stacktwin.dev") {
       return {
-        name: "Demo Learner",
+        name: "Engineer",
         current_role: "Product Engineer",
         experience_years: 6,
         seniority: "senior",
@@ -28,10 +28,10 @@ const { fetchCurrentProfile } = vi.hoisted(() => ({
         raw_text: null
       };
     }
-    if (userId === "soumya@gmail.com") {
+    if (userId === "creator@stacktwin.dev") {
       return {
-        name: "Soumya",
-        current_role: "Staff Engineer",
+        name: "Creator",
+        current_role: "Product Creator",
         experience_years: 10,
         seniority: "staff",
         current_stack: ["React", "GraphQL"],
@@ -73,7 +73,7 @@ afterEach(() => {
 describe("ProfileSettingsPage missing-profile and reload states", () => {
   it("offers quick onboarding when the active learner has no profile", async () => {
     await act(async () => {
-      setClassroomUserId("john@company.com");
+      setClassroomUserId("researcher@stacktwin.dev");
     });
 
     render(<ProfileSettingsPage />);
@@ -90,32 +90,32 @@ describe("ProfileSettingsPage missing-profile and reload states", () => {
 
   it("keeps the active learner after a reload", async () => {
     await act(async () => {
-      setClassroomUserId("soumya@gmail.com");
+      setClassroomUserId("creator@stacktwin.dev");
     });
 
     render(<ProfileSettingsPage />);
 
-    await waitFor(() => expect(fetchCurrentProfile).toHaveBeenCalledWith("soumya@gmail.com"));
-    expect(await screen.findByLabelText(/^name$/i)).toHaveValue("Soumya");
+    await waitFor(() => expect(fetchCurrentProfile).toHaveBeenCalledWith("creator@stacktwin.dev"));
+    expect(await screen.findByLabelText(/^name$/i)).toHaveValue("Creator");
 
     cleanup();
     render(<ProfileSettingsPage />);
 
-    await waitFor(() => expect(fetchCurrentProfile).toHaveBeenCalledWith("soumya@gmail.com"));
-    expect(await screen.findByLabelText(/^name$/i)).toHaveValue("Soumya");
+    await waitFor(() => expect(fetchCurrentProfile).toHaveBeenCalledWith("creator@stacktwin.dev"));
+    expect(await screen.findByLabelText(/^name$/i)).toHaveValue("Creator");
   });
 
   it("reloads the saved profile when the active learner changes", async () => {
     render(<ProfileSettingsPage />);
 
-    expect(await screen.findByLabelText(/^name$/i)).toHaveValue("Demo Learner");
-    expect(fetchCurrentProfile).toHaveBeenCalledWith("demo@stacktwin.dev");
+    expect(await screen.findByLabelText(/^name$/i)).toHaveValue("Engineer");
+    expect(fetchCurrentProfile).toHaveBeenCalledWith("engineer@stacktwin.dev");
 
     await act(async () => {
-      setClassroomUserId("soumya@gmail.com");
+      setClassroomUserId("creator@stacktwin.dev");
     });
 
-    await waitFor(() => expect(fetchCurrentProfile).toHaveBeenCalledWith("soumya@gmail.com"));
-    await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toHaveValue("Soumya"));
+    await waitFor(() => expect(fetchCurrentProfile).toHaveBeenCalledWith("creator@stacktwin.dev"));
+    await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toHaveValue("Creator"));
   });
 });

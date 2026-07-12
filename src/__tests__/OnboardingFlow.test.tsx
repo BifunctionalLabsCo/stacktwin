@@ -80,6 +80,22 @@ describe("OnboardingFlow manual entry path", () => {
 });
 
 describe("OnboardingFlow quick start path", () => {
+  it("offers Engineer, Creator, Researcher, and New Profile bootstrap paths", async () => {
+    const user = userEvent.setup();
+
+    render(<OnboardingFlow />);
+
+    expect(screen.getByRole("button", { name: /engineer/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /creator/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /researcher/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /new profile/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /creator/i }));
+
+    expect(await screen.findByLabelText(/quick start profile/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^current role$/i)).toHaveValue("Product Creator");
+  });
+
   it("saves a compact seeded profile and starts generation", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
@@ -118,7 +134,7 @@ describe("OnboardingFlow quick start path", () => {
 
   it("restores an in-progress draft per active learner", async () => {
     const user = userEvent.setup();
-    setClassroomUserId("demo@stacktwin.dev");
+    setClassroomUserId("engineer@stacktwin.dev");
 
     render(<OnboardingFlow startMode="quick" />);
 
@@ -127,17 +143,17 @@ describe("OnboardingFlow quick start path", () => {
     await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toHaveValue("Demo Draft"));
 
     await act(async () => {
-      setClassroomUserId("soumya@gmail.com");
+      setClassroomUserId("creator@stacktwin.dev");
     });
 
-    await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toHaveValue("Soumya"));
+    await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toHaveValue("Creator"));
 
     await user.clear(screen.getByLabelText(/^name$/i));
-    await user.type(screen.getByLabelText(/^name$/i), "Soumya Draft");
-    await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toHaveValue("Soumya Draft"));
+    await user.type(screen.getByLabelText(/^name$/i), "Creator Draft");
+    await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toHaveValue("Creator Draft"));
 
     await act(async () => {
-      setClassroomUserId("demo@stacktwin.dev");
+      setClassroomUserId("engineer@stacktwin.dev");
     });
 
     await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toHaveValue("Demo Draft"));

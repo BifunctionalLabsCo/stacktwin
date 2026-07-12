@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Archive, CalendarDays, UserCircle } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import {
+  createClassroomUser,
   setClassroomUserId,
   useActiveClassroomUserId,
   useClassroomUsers
@@ -13,6 +14,7 @@ import {
 
 export function AppNav() {
   const pathname = usePathname();
+  const router = useRouter();
   const activeUserId = useActiveClassroomUserId();
   const users = useClassroomUsers();
   const activeUser = users.find((user) => user.id === activeUserId) ?? users[0];
@@ -55,6 +57,16 @@ export function AppNav() {
             ))}
           </select>
         </label>
+        <button
+          type="button"
+          className="newProfileAction"
+          onClick={() => {
+            createClassroomUser();
+            router.push("/onboarding/?start=new");
+          }}
+        >
+          New profile
+        </button>
         <ThemeToggle />
       </div>
     </header>

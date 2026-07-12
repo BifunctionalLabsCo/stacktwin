@@ -5,9 +5,9 @@ export type ClassroomUser = {
 };
 
 const FALLBACK_USERS: ClassroomUser[] = [
-  { id: "demo@stacktwin.dev", label: "Demo learner", description: "Default classroom" },
-  { id: "soumya@gmail.com", label: "Soumya", description: "Saved profile demo" },
-  { id: "john@company.com", label: "John", description: "Archive demo" }
+  { id: "engineer@stacktwin.dev", label: "Engineer", description: "Systems, tooling, and product engineering" },
+  { id: "creator@stacktwin.dev", label: "Creator", description: "Ideas, storytelling, and product craft" },
+  { id: "researcher@stacktwin.dev", label: "Researcher", description: "Evidence, emerging technology, and insight" }
 ];
 
 export function getDefaultClassroomUsers() {

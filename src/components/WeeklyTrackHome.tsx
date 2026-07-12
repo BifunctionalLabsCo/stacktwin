@@ -48,7 +48,7 @@ export function WeeklyTrackHome() {
         return;
       }
       if (nextState.status === "profile_required") {
-        router.replace("/onboarding/");
+        router.replace("/onboarding/?start=quick");
         return;
       }
       setState(

@@ -207,6 +207,10 @@ export function emptyProfile(): DeveloperProfile {
   };
 }
 
+export function createNewProfile(userId = getClassroomUserId()): DeveloperProfile {
+  return { ...emptyProfile(), name: getClassroomUserLabel(userId) };
+}
+
 export type QuickStartProfileDraft = {
   name: string;
   current_role: string;
@@ -217,16 +221,76 @@ export type QuickStartProfileDraft = {
   preferred_format: ContentFormatValue | "";
 };
 
-export function createQuickStartProfileDraft(userId = getClassroomUserId()): QuickStartProfileDraft {
-  return {
-    name: getClassroomUserLabel(userId),
+export type ProfilePreset = "engineer" | "creator" | "researcher";
+
+export const PROFILE_PRESETS: Array<{
+  id: ProfilePreset;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "engineer",
+    label: "Engineer",
+    description: "Build practical depth across systems, tooling, and product engineering."
+  },
+  {
+    id: "creator",
+    label: "Creator",
+    description: "Turn ideas into clear, useful products, stories, and experiments."
+  },
+  {
+    id: "researcher",
+    label: "Researcher",
+    description: "Follow evidence, emerging ideas, and the questions behind the headlines."
+  }
+];
+
+const PROFILE_PRESET_DRAFTS: Record<ProfilePreset, Omit<QuickStartProfileDraft, "name">> = {
+  engineer: {
     current_role: "Software Engineer",
     current_stack: "TypeScript, React, Next.js",
-    learning_goals: "Ship a sharper weekly learning flow",
-    career_direction: "Build a stronger product experience with AI",
+    learning_goals: "Ship better systems and stronger product experiences",
+    career_direction: "Grow as a high-leverage product engineer",
     weekly_time_budget_hours: "3",
     preferred_format: "hands_on"
+  },
+  creator: {
+    current_role: "Product Creator",
+    current_stack: "Figma, storytelling, no-code tools",
+    learning_goals: "Develop sharper ideas and ship more compelling work",
+    career_direction: "Build a distinctive creative practice with technology",
+    weekly_time_budget_hours: "3",
+    preferred_format: "short_summary"
+  },
+  researcher: {
+    current_role: "Technology Researcher",
+    current_stack: "Python, notebooks, data analysis",
+    learning_goals: "Turn new research into useful mental models and decisions",
+    career_direction: "Develop trusted insight across emerging technology",
+    weekly_time_budget_hours: "4",
+    preferred_format: "deep_dive"
+  }
+};
+
+export function createQuickStartProfileDraft(
+  userId = getClassroomUserId(),
+  preset?: ProfilePreset
+): QuickStartProfileDraft {
+  const selectedPreset = preset ?? profilePresetForUser(userId);
+  return {
+    name: getClassroomUserLabel(userId),
+    ...PROFILE_PRESET_DRAFTS[selectedPreset]
   };
+}
+
+function profilePresetForUser(userId: string): ProfilePreset {
+  if (userId === "creator@stacktwin.dev") {
+    return "creator";
+  }
+  if (userId === "researcher@stacktwin.dev") {
+    return "researcher";
+  }
+  return "engineer";
 }
 
 type PersistedOnboardingFlow =

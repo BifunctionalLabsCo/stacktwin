@@ -164,6 +164,24 @@ input:focus-visible {
   font-weight: 700;
 }
 
+.newProfileAction {
+  appearance: none;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 750;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.newProfileAction:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .shell {
   width: min(1120px, calc(100vw - 32px));
   margin: 0 auto;
@@ -890,6 +908,89 @@ h1 {
   margin-top: 12px;
 }
 
+.profilePresetSection {
+  display: grid;
+  gap: 18px;
+  margin-top: 28px;
+}
+
+.sectionIntro {
+  display: grid;
+  gap: 6px;
+}
+
+.sectionIntro h2,
+.sectionIntro p {
+  margin: 0;
+}
+
+.sectionIntro h2 {
+  font-size: 1.45rem;
+}
+
+.sectionIntro > p:last-child {
+  max-width: 640px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.profilePresetGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.profilePresetCard {
+  display: grid;
+  min-height: 210px;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.profilePresetCard:hover,
+.profilePresetCard:focus-visible {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.profilePresetCard.isNew {
+  border-style: dashed;
+}
+
+.profilePresetLabel {
+  font-size: 1.08rem;
+  font-weight: 750;
+}
+
+.profilePresetDescription {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.profilePresetAction {
+  align-self: end;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.onboardingDivider {
+  margin: 28px 0 12px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .onboardingCard {
   display: grid;
   gap: 10px;
@@ -1017,6 +1118,7 @@ h1 {
   .archiveLayout,
   .influenceBand,
   .onboardingChoices,
+  .profilePresetGrid,
   .reviewGrid {
     grid-template-columns: 1fr;
   }
@@ -1063,6 +1165,10 @@ h1 {
   .userSwitcher {
     min-width: 0;
     width: 100%;
+  }
+
+  .newProfileAction {
+    align-self: end;
   }
 
   .appMark {

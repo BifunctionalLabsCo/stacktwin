@@ -11,6 +11,7 @@ import {
   useClassroomUsers
 } from "../lib/classroom-user";
 
+const NEW_PROFILE_OPTION = "__new_profile__";
 
 export function AppNav() {
   const pathname = usePathname();
@@ -47,7 +48,14 @@ export function AppNav() {
           <select
             id="classroom-user-switcher"
             value={activeUser?.id ?? ""}
-            onChange={(event) => setClassroomUserId(event.target.value)}
+            onChange={(event) => {
+              if (event.target.value === NEW_PROFILE_OPTION) {
+                createClassroomUser();
+                router.push("/onboarding/?start=new");
+                return;
+              }
+              setClassroomUserId(event.target.value);
+            }}
             aria-label="Switch active learner"
           >
             {users.map((user) => (
@@ -55,18 +63,9 @@ export function AppNav() {
                 {user.label} ({user.id})
               </option>
             ))}
+            <option value={NEW_PROFILE_OPTION}>+ New Profile</option>
           </select>
         </label>
-        <button
-          type="button"
-          className="newProfileAction"
-          onClick={() => {
-            createClassroomUser();
-            router.push("/onboarding/?start=new");
-          }}
-        >
-          New profile
-        </button>
         <ThemeToggle />
       </div>
     </header>

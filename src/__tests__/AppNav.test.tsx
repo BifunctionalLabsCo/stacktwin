@@ -39,9 +39,9 @@ describe("AppNav learner switcher", () => {
     render(<AppNav />);
 
     expect(screen.getByLabelText(/switch active learner/i)).toHaveValue("researcher@stacktwin.dev");
-    expect(screen.getByRole("button", { name: /new profile/i })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /new profile/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /new profile/i }));
+    await user.selectOptions(screen.getByLabelText(/switch active learner/i), "__new_profile__");
 
     expect(push).toHaveBeenCalledWith("/onboarding/?start=new");
     expect(localStorage.getItem("stacktwin.active-user-id")).toMatch(/^profile-.+@stacktwin\.local$/);

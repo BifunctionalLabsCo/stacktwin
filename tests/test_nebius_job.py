@@ -87,8 +87,8 @@ def test_submit_weekly_content_prefetch_job_builds_prefetch_command(monkeypatch,
 
     monkeypatch.setattr("stacktwin.jobs.nebius.subprocess.run", fake_run)
 
-    submit_weekly_content_prefetch_job()
+    submit_weekly_content_prefetch_job("lease-owner")
 
     command = captured["command"]
-    assert command[command.index("--args") + 1] == "--prefetch-weekly-content"
+    assert command[command.index("--args") + 1] == "--prefetch-weekly-content --prefetch-owner lease-owner"
     assert command[command.index("--name") + 1].startswith("stacktwin-prefetch-")

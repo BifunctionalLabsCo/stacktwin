@@ -30,6 +30,7 @@ export type WeeklyTrack = {
 
 export type WeeklyTrackState =
   | { status: "loading" }
+  | { status: "preparing_content" }
   | { status: "profile_required"; message: string }
   | { status: "empty"; message: string }
   | { status: "error"; message: string }

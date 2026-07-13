@@ -15,6 +15,7 @@ def main() -> int:
     command = parser.add_mutually_exclusive_group(required=True)
     command.add_argument("--user-id")
     command.add_argument("--prefetch-weekly-content", action="store_true")
+    parser.add_argument("--prefetch-owner")
     args = parser.parse_args()
 
     load_dotenv(os.getenv("STACKTWIN_JOB_ENV_PATH", "/run/secrets/stacktwin.env"))
@@ -55,7 +56,7 @@ def main() -> int:
             from stacktwin.pipeline.ingest import prefetch_weekly_content
             from stacktwin.storage.factory import get_storage
 
-            print(prefetch_weekly_content(get_storage()), flush=True)
+            print(prefetch_weekly_content(get_storage(), owner_id=args.prefetch_owner), flush=True)
         else:
             from stacktwin.api.routes.digest import run_pipeline
 

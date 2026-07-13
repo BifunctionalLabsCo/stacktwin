@@ -81,18 +81,13 @@ of an always-on model endpoint. Each Job starts local vLLM, waits for the model,
 runs the complete weekly pipeline for one learner, persists its results to Nebius
 Object Storage, terminates vLLM, and exits. GPU billing ends with the Job.
 
-### Monday shared-content prefetch
+### Weekly shared-content prefetch
 
-At 00:00 UTC each Monday, `.github/workflows/monday-content-prefetch.yml` calls
-`POST /api/digest/prefetch`. It fetches and tags the shared weekly source pool,
-then stores it in the configured storage backend. Triggering a learner pipeline
-later in the week reuses that pool and only performs profile-specific scoring,
-digest generation, and lesson creation.
-
-Configure these repository secrets before enabling the workflow:
-
-- `STACKTWIN_PREFETCH_URL`: deployed `https://…/api/digest/prefetch` URL.
-- `STACKTWIN_SCHEDULE_TOKEN`: matches the deployed `STACKTWIN_SCHEDULE_TOKEN`.
+On the first authenticated app visit after a new Monday UTC boundary, the API
+claims a durable S3 lease and starts one Nebius prefetch Job. Other visitors see
+the preparation state and wait for the same shared content/tag snapshot. Later
+profile runs reuse that pool and only perform profile-specific scoring, digest
+generation, and lesson creation.
 
 Create a Nebius Container Registry once, configure its Docker credential helper,
 then build and push the Job image:

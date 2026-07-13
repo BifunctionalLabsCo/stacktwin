@@ -54,7 +54,7 @@ def prefetch_content(x_stacktwin_schedule_token: str | None = Header(default=Non
 
     if os.getenv("STACKTWIN_PIPELINE_EXECUTION", "local") == "nebius_job":
         try:
-            job = submit_weekly_content_prefetch_job()
+            job = submit_weekly_content_prefetch_job(str(uuid.uuid4()))
         except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
             raise HTTPException(status_code=502, detail=sanitize_failure_summary(error)) from error
         return JSONResponse(
@@ -63,6 +63,33 @@ def prefetch_content(x_stacktwin_schedule_token: str | None = Header(default=Non
         )
 
     return JSONResponse(content={"status": "prefetched", **prefetch_weekly_content(get_storage())})
+
+
+@router.post("/prefetch/ensure")
+def ensure_prefetched_content():
+    """Idempotently ensure the shared weekly content pool is ready for an authenticated app visit."""
+    storage = get_storage()
+    today = datetime.now(UTC).date()
+    week_start = (today - timedelta(days=today.weekday())).isoformat()
+    snapshot = storage.load_content_snapshot(week_start)
+    if snapshot and snapshot.get("tag_index") is not None:
+        return {"status": "ready", "week_start": week_start}
+
+    owner_id = str(uuid.uuid4())
+    if not storage.acquire_content_prefetch_lease(week_start, owner_id):
+        lease = storage.load_content_prefetch_lease(week_start) or {}
+        return {"status": lease.get("status", "pending"), "week_start": week_start}
+
+    if os.getenv("STACKTWIN_PIPELINE_EXECUTION", "local") == "nebius_job":
+        try:
+            job = submit_weekly_content_prefetch_job(owner_id)
+        except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
+            storage.fail_content_prefetch_lease(week_start, owner_id, sanitize_failure_summary(error))
+            raise HTTPException(status_code=502, detail=sanitize_failure_summary(error)) from error
+        return {"status": "pending", "week_start": week_start, "job_id": job.job_id}
+
+    result = prefetch_weekly_content(storage, owner_id=owner_id)
+    return {"status": "ready", **result}
 
 
 def _log(run_id: str, stage: str, message: str) -> None:

@@ -136,3 +136,23 @@ class StorageBackend(ABC):
     def load_content_snapshot(self, week_start: str) -> dict | None:
         """Load the shared weekly source pool, or None when it has not been prefetched."""
         pass
+
+    @abstractmethod
+    def acquire_content_prefetch_lease(self, week_start: str, owner_id: str) -> bool:
+        """Atomically claim this week's shared-content prefetch work."""
+        pass
+
+    @abstractmethod
+    def load_content_prefetch_lease(self, week_start: str) -> dict | None:
+        """Load the current shared-content prefetch lease."""
+        pass
+
+    @abstractmethod
+    def complete_content_prefetch_lease(self, week_start: str, owner_id: str) -> None:
+        """Mark a claimed prefetch as ready."""
+        pass
+
+    @abstractmethod
+    def fail_content_prefetch_lease(self, week_start: str, owner_id: str, reason: str) -> None:
+        """Mark a claimed prefetch as failed."""
+        pass

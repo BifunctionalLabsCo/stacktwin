@@ -75,6 +75,9 @@ class NebiusS3Storage(StorageBackend):
     def _content_snapshot_key(self, week_start: str) -> str:
         return self._key(f"content/{week_start}.json")
 
+    def _content_lease_key(self, week_start: str) -> str:
+        return self._key(f"content/{week_start}/prefetch.json")
+
     def _put_json(self, key: str, data: dict) -> None:
         self.client.put_object(
             Bucket=self.bucket,
@@ -301,6 +304,42 @@ class NebiusS3Storage(StorageBackend):
 
     def load_content_snapshot(self, week_start: str) -> dict | None:
         return self._get_json(self._content_snapshot_key(week_start))
+
+    def acquire_content_prefetch_lease(self, week_start: str, owner_id: str) -> bool:
+        try:
+            self.client.put_object(
+                Bucket=self.bucket,
+                Key=self._content_lease_key(week_start),
+                Body=orjson.dumps({"owner_id": owner_id, "status": "running"}),
+                ContentType="application/json",
+                IfNoneMatch="*",
+            )
+            return True
+        except Exception as error:
+            code = getattr(error, "response", {}).get("Error", {}).get("Code")
+            if code in {"PreconditionFailed", "412"}:
+                return False
+            raise
+
+    def load_content_prefetch_lease(self, week_start: str) -> dict | None:
+        return self._get_json(self._content_lease_key(week_start))
+
+    def complete_content_prefetch_lease(self, week_start: str, owner_id: str) -> None:
+        self._write_content_lease(week_start, owner_id, "ready")
+
+    def fail_content_prefetch_lease(self, week_start: str, owner_id: str, reason: str) -> None:
+        self._write_content_lease(week_start, owner_id, "failed", reason)
+
+    def _write_content_lease(
+        self, week_start: str, owner_id: str, status: str, reason: str | None = None
+    ) -> None:
+        lease = self.load_content_prefetch_lease(week_start)
+        if not lease or lease.get("owner_id") != owner_id:
+            return
+        payload = {"owner_id": owner_id, "status": status}
+        if reason:
+            payload["reason"] = reason[:300]
+        self._put_json(self._content_lease_key(week_start), payload)
 
     def _find_run_key(self, user_id: str, run_id: str) -> str | None:
         for key in self._run_keys(user_id):

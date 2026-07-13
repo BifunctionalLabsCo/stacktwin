@@ -57,6 +57,9 @@ class JSONStorage(StorageBackend):
     def _content_snapshot_path(self, week_start: str) -> str:
         return os.path.join(self.outputs_dir, f"content_{week_start}.json")
 
+    def _content_lease_path(self, week_start: str) -> str:
+        return os.path.join(self.outputs_dir, f"content_{week_start}_prefetch.json")
+
     def save_profile(
         self,
         user_id: str,
@@ -291,6 +294,42 @@ class JSONStorage(StorageBackend):
             return None
         with open(path, encoding="utf-8") as f:
             return json.load(f)
+
+    def acquire_content_prefetch_lease(self, week_start: str, owner_id: str) -> bool:
+        path = self._content_lease_path(week_start)
+        try:
+            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+        except FileExistsError:
+            return False
+        with os.fdopen(descriptor, "w", encoding="utf-8") as f:
+            json.dump({"owner_id": owner_id, "status": "running"}, f)
+        return True
+
+    def load_content_prefetch_lease(self, week_start: str) -> dict | None:
+        path = self._content_lease_path(week_start)
+        if not os.path.exists(path):
+            return None
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+
+    def complete_content_prefetch_lease(self, week_start: str, owner_id: str) -> None:
+        self._write_content_lease(week_start, owner_id, "ready")
+
+    def fail_content_prefetch_lease(self, week_start: str, owner_id: str, reason: str) -> None:
+        self._write_content_lease(week_start, owner_id, "failed", reason)
+
+    def _write_content_lease(
+        self, week_start: str, owner_id: str, status: str, reason: str | None = None
+    ) -> None:
+        path = self._content_lease_path(week_start)
+        lease = self.load_content_prefetch_lease(week_start)
+        if not lease or lease.get("owner_id") != owner_id:
+            return
+        payload = {"owner_id": owner_id, "status": status}
+        if reason:
+            payload["reason"] = reason[:300]
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
 
     def _track_files(self, user_id: str) -> list[str]:
         prefix = f"{self._safe_user_id(user_id)}_track_"

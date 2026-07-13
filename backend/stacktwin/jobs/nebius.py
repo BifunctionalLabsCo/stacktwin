@@ -18,9 +18,9 @@ def submit_weekly_pipeline_job(user_id: str) -> SubmittedJob:
     return _submit_job(f"--user-id {user_id}", "weekly")
 
 
-def submit_weekly_content_prefetch_job() -> SubmittedJob:
+def submit_weekly_content_prefetch_job(owner_id: str) -> SubmittedJob:
     """Submit one finite Nebius Job that refreshes the shared weekly source pool."""
-    return _submit_job("--prefetch-weekly-content", "prefetch")
+    return _submit_job(f"--prefetch-weekly-content --prefetch-owner {owner_id}", "prefetch")
 
 
 def _submit_job(job_args: str, job_kind: str) -> SubmittedJob:

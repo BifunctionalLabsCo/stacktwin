@@ -282,14 +282,23 @@ def load_or_fetch(
     return articles
 
 
-def prefetch_weekly_content(storage, limit_per_source: int = SOURCE_LIMIT) -> dict[str, int | str]:
+def prefetch_weekly_content(
+    storage, limit_per_source: int = SOURCE_LIMIT, owner_id: str | None = None
+) -> dict[str, int | str]:
     """Fetch and tag the shared weekly source pool without scoring any learner profile."""
     week_start = _week_start()
-    articles = load_or_fetch(
-        limit_per_source=limit_per_source, storage=storage, week_start=week_start
-    )
-    tag_index = load_or_build_tag_index(articles, storage=storage, week_start=week_start)
-    return {"week_start": week_start, "articles": len(articles), "tags": len(tag_index)}
+    try:
+        articles = load_or_fetch(
+            limit_per_source=limit_per_source, storage=storage, week_start=week_start
+        )
+        tag_index = load_or_build_tag_index(articles, storage=storage, week_start=week_start)
+        if owner_id:
+            storage.complete_content_prefetch_lease(week_start, owner_id)
+        return {"week_start": week_start, "articles": len(articles), "tags": len(tag_index)}
+    except Exception as error:
+        if owner_id:
+            storage.fail_content_prefetch_lease(week_start, owner_id, str(error))
+        raise
 
 
 def _week_start() -> str:

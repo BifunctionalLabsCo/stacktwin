@@ -22,6 +22,7 @@ import { applyCompletedProgress } from "../lib/progress";
 import { fetchProfileInfluence, type ProfileInfluence } from "../lib/classroom";
 import { useActiveClassroomUserId } from "../lib/classroom-user";
 import { ProfileInfluenceBand } from "./ProfileInfluenceBand";
+import { ensureWeeklyContent } from "../lib/weekly-content";
 
 const statusMeta = {
   ready: { label: "Ready", Icon: CheckCircle2 },
@@ -43,7 +44,13 @@ export function WeeklyTrackHome() {
     setState({ status: "loading" });
     setProfile(null);
 
-    fetchWeeklyTrackState(userId).then((nextState) => {
+    ensureWeeklyContent().then((contentStatus) => {
+      if (!active) return;
+      if (contentStatus !== "ready") {
+        setState({ status: "preparing_content" });
+        return;
+      }
+      fetchWeeklyTrackState(userId).then((nextState) => {
       if (!active) {
         return;
       }
@@ -56,6 +63,7 @@ export function WeeklyTrackHome() {
           ? { status: "ready", track: applyCompletedProgress(nextState.track) }
           : nextState
       );
+      });
     });
     fetchProfileInfluence(userId).then((nextProfile) => {
       if (active) {
@@ -68,15 +76,15 @@ export function WeeklyTrackHome() {
     };
   }, [router, userId]);
 
-  if (state.status === "loading") {
+  if (state.status === "loading" || state.status === "preparing_content") {
     return (
       <main className="shell">
         <HeaderShell />
         <section className="statePanel" aria-live="polite">
           <RotateCcw size={20} />
           <div>
-            <h2>Preparing this week's track</h2>
-            <p>StackTwin is collecting source signals and shaping the learning cards.</p>
+            <h2>{state.status === "preparing_content" ? "Preparing this week's content" : "Preparing this week's track"}</h2>
+            <p>{state.status === "preparing_content" ? "StackTwin is fetching and tagging this week's source pool. Check back in a moment." : "StackTwin is collecting source signals and shaping the learning cards."}</p>
           </div>
         </section>
         <LoadingGrid />

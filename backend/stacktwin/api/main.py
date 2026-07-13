@@ -8,7 +8,7 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from stacktwin.api.routes import profile, digest, track
+from stacktwin.api.routes import digest, profile, track
 
 load_dotenv()
 
@@ -34,8 +34,14 @@ def _session_value(password: str) -> str:
 @app.middleware("http")
 async def password_gate(request: Request, call_next):
     password = os.getenv("STACKTWIN_APP_PASSWORD")
-    public_paths = {"/login", "/api/health"}
-    if not password or request.url.path in public_paths or request.url.path.startswith("/api/auth/"):
+    # The prefetch route authenticates machine callers with its own schedule
+    # token. It must reach that route so the token can be verified there.
+    public_paths = {"/login", "/api/health", "/api/digest/prefetch"}
+    if (
+        not password
+        or request.url.path in public_paths
+        or request.url.path.startswith("/api/auth/")
+    ):
         return await call_next(request)
     valid = request.cookies.get(AUTH_COOKIE)
     if valid and hmac.compare_digest(valid, _session_value(password)):
@@ -49,7 +55,8 @@ async def password_gate(request: Request, call_next):
 def login_form():
     return """<main style='max-width:24rem;margin:10vh auto;font-family:system-ui'>
     <h1>StackTwin</h1><p>Enter the shared access password.</p>
-    <form method='post' action='/api/auth/login'><input name='password' type='password' autofocus required>
+    <form method='post' action='/api/auth/login'>
+    <input name='password' type='password' autofocus required>
     <button type='submit'>Continue</button></form></main>"""
 
 
@@ -83,4 +90,7 @@ if FRONTEND_DIR.exists():
 else:
     @app.get("/")
     def root():
-        return {"message": "StackTwin API running. Frontend not built yet — run npm run build inside src/"}
+        return {
+            "message": "StackTwin API running. Frontend not built yet. "
+            "Run npm run build inside src/."
+        }

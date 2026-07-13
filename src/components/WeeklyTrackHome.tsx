@@ -33,6 +33,8 @@ const statusMeta = {
   stale: { label: "Update available", Icon: RotateCcw }
 };
 
+const CONTENT_POLL_INTERVAL_MS = 5_000;
+
 export function WeeklyTrackHome() {
   const router = useRouter();
   const userId = useActiveClassroomUserId();
@@ -44,27 +46,45 @@ export function WeeklyTrackHome() {
     setState({ status: "loading" });
     setProfile(null);
 
-    ensureWeeklyContent().then((contentStatus) => {
-      if (!active) return;
-      if (contentStatus !== "ready") {
-        setState({ status: "preparing_content" });
-        return;
-      }
+    const loadTrack = () => {
       fetchWeeklyTrackState(userId).then((nextState) => {
-      if (!active) {
-        return;
-      }
-      if (nextState.status === "profile_required") {
-        router.replace("/onboarding/?start=quick");
-        return;
-      }
-      setState(
-        nextState.status === "ready"
-          ? { status: "ready", track: applyCompletedProgress(nextState.track) }
-          : nextState
-      );
+        if (!active) {
+          return;
+        }
+        if (nextState.status === "profile_required") {
+          router.replace("/onboarding/?start=quick");
+          return;
+        }
+        setState(
+          nextState.status === "ready"
+            ? { status: "ready", track: applyCompletedProgress(nextState.track) }
+            : nextState
+        );
       });
-    });
+    };
+
+    const waitForContent = () => {
+      ensureWeeklyContent().then((contentStatus) => {
+        if (!active) {
+          return;
+        }
+        if (contentStatus === "ready") {
+          loadTrack();
+          return;
+        }
+        if (contentStatus === "failed") {
+          setState({
+            status: "error",
+            message: "This week's content preparation failed. Refresh to retry."
+          });
+          return;
+        }
+        setState({ status: "preparing_content" });
+        window.setTimeout(waitForContent, CONTENT_POLL_INTERVAL_MS);
+      });
+    };
+
+    waitForContent();
     fetchProfileInfluence(userId).then((nextProfile) => {
       if (active) {
         setProfile(nextProfile);

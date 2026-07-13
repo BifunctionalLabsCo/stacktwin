@@ -72,12 +72,13 @@ def prefetch_content(x_stacktwin_schedule_token: str | None = Header(default=Non
             content={"status": "submitted", "job_id": job.job_id, "job_name": job.name},
         )
 
-    return JSONResponse(
-        content={
-            "status": "prefetched",
-            **prefetch_weekly_content(get_storage(), fallback_storage=_cloud_content_fallback()),
-        }
-    )
+    try:
+        result = prefetch_weekly_content(
+            get_storage(), fallback_storage=_cloud_content_fallback()
+        )
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=sanitize_failure_summary(error)) from error
+    return JSONResponse(content={"status": "prefetched", **result})
 
 
 @router.post("/prefetch/ensure")
@@ -114,9 +115,12 @@ def ensure_prefetched_content():
             raise HTTPException(status_code=502, detail=sanitize_failure_summary(error)) from error
         return {"status": "pending", "week_start": week_start, "job_id": job.job_id}
 
-    result = prefetch_weekly_content(
-        storage, owner_id=owner_id, fallback_storage=fallback_storage
-    )
+    try:
+        result = prefetch_weekly_content(
+            storage, owner_id=owner_id, fallback_storage=fallback_storage
+        )
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=sanitize_failure_summary(error)) from error
     return {"status": "ready", **result}
 
 
@@ -158,7 +162,11 @@ def run_pipeline(user_id: str = Query(..., description="User email address")):
     return _run_pipeline(user_id)
 
 
-def _run_pipeline(user_id: str, stop_after_scoring: bool = False):
+def _run_pipeline(
+    user_id: str,
+    stop_after_scoring: bool = False,
+    run_id: str | None = None,
+):
     """
     Trigger the full pipeline for a specific user.
     Uses today's article cache if available and skips re-fetching.
@@ -173,19 +181,33 @@ def _run_pipeline(user_id: str, stop_after_scoring: bool = False):
     today = datetime.now(UTC).date()
     week_start = (today - timedelta(days=today.weekday())).isoformat()
 
-    run = PipelineRun(
-        run_id=str(uuid.uuid4()),
-        user_id=user_id,
-        target_week=week_start,
-        trigger_type="manual",
-        status="running",
-        current_stage="queued",
-        attempt_number=1,
-        created_at=_now(),
-        updated_at=_now(),
-    )
-    storage.save_run(run)
-    _log(run.run_id, run.current_stage, f"created for user={user_id} week={week_start}")
+    if run_id:
+        run = next(
+            (
+                candidate
+                for candidate in storage.load_run_history(user_id, limit=100)
+                if candidate.run_id == run_id
+            ),
+            None,
+        )
+        if not run:
+            raise RuntimeError(f"Pipeline run {run_id} was not found for {user_id}.")
+        run.status = "running"
+        _transition(storage, run, run.current_stage)
+    else:
+        run = PipelineRun(
+            run_id=str(uuid.uuid4()),
+            user_id=user_id,
+            target_week=week_start,
+            trigger_type="manual",
+            status="running",
+            current_stage="queued",
+            attempt_number=1,
+            created_at=_now(),
+            updated_at=_now(),
+        )
+        storage.save_run(run)
+        _log(run.run_id, run.current_stage, f"created for user={user_id} week={week_start}")
 
     try:
         existing_digest = storage.load_digest_by_week(user_id, week_start)

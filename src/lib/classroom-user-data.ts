@@ -50,6 +50,19 @@ export function parseConfiguredClassroomUsers(rawValue: string | undefined): Cla
   return normalized.length > 0 ? normalized : FALLBACK_USERS;
 }
 
+/** Parse persisted user-created profiles without injecting demo fallbacks. */
+export function parseStoredClassroomUsers(rawValue: string | undefined): ClassroomUser[] {
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    return normalizeUsers(JSON.parse(rawValue));
+  } catch {
+    return [];
+  }
+}
+
 export function normalizeClassroomUserId(userId: string | null | undefined, users = FALLBACK_USERS) {
   const candidate = typeof userId === "string" ? userId.trim() : "";
   if (!candidate) {

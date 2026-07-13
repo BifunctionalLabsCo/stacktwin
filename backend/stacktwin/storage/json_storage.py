@@ -10,6 +10,7 @@ from stacktwin.storage.base import StorageBackend
 # Runs kept per user in the JSON backend. Older runs are dropped on write
 # so a single user's run history file cannot grow without bound.
 MAX_STORED_RUNS_PER_USER = 100
+PREFETCH_LEASE_SECONDS = int(os.getenv("STACKTWIN_PREFETCH_LEASE_SECONDS", "1800"))
 
 
 class JSONStorage(StorageBackend):
@@ -297,12 +298,22 @@ class JSONStorage(StorageBackend):
 
     def acquire_content_prefetch_lease(self, week_start: str, owner_id: str) -> bool:
         path = self._content_lease_path(week_start)
+        payload = self._new_content_lease(owner_id)
         try:
             descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
         except FileExistsError:
-            return False
+            lease = self.load_content_prefetch_lease(week_start)
+            if not self._can_reclaim_content_lease(lease):
+                return False
+            # A stale owner can no longer complete this lease because writes
+            # verify owner_id. Replacing it makes a crashed Job retryable.
+            replacement = f"{path}.{owner_id}.tmp"
+            with open(replacement, "w", encoding="utf-8") as f:
+                json.dump(payload, f)
+            os.replace(replacement, path)
+            return True
         with os.fdopen(descriptor, "w", encoding="utf-8") as f:
-            json.dump({"owner_id": owner_id, "status": "running"}, f)
+            json.dump(payload, f)
         return True
 
     def load_content_prefetch_lease(self, week_start: str) -> dict | None:
@@ -325,11 +336,36 @@ class JSONStorage(StorageBackend):
         lease = self.load_content_prefetch_lease(week_start)
         if not lease or lease.get("owner_id") != owner_id:
             return
-        payload = {"owner_id": owner_id, "status": status}
+        payload = {
+            "owner_id": owner_id,
+            "status": status,
+            "started_at": lease.get("started_at", datetime.now(UTC).isoformat()),
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
         if reason:
             payload["reason"] = reason[:300]
         with open(path, "w", encoding="utf-8") as f:
             json.dump(payload, f)
+
+    @staticmethod
+    def _new_content_lease(owner_id: str) -> dict[str, str]:
+        now = datetime.now(UTC).isoformat()
+        return {"owner_id": owner_id, "status": "running", "started_at": now, "updated_at": now}
+
+    @staticmethod
+    def _can_reclaim_content_lease(lease: dict | None) -> bool:
+        if not lease or lease.get("status") == "failed":
+            return True
+        if lease.get("status") != "running":
+            return False
+        timestamp = lease.get("updated_at") or lease.get("started_at")
+        if not isinstance(timestamp, str):
+            return True
+        try:
+            updated_at = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            return True
+        return (datetime.now(UTC) - updated_at).total_seconds() >= PREFETCH_LEASE_SECONDS
 
     def _track_files(self, user_id: str) -> list[str]:
         prefix = f"{self._safe_user_id(user_id)}_track_"

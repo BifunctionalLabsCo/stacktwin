@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -31,12 +32,12 @@ def main() -> int:
         _run_model_phase(model_for("map"), port, base_url, _prefetch(args.prefetch_owner))
         return 0
 
-    _run_model_phase(model_for("map"), port, base_url, _score(args.user_id))
-    _run_model_phase(model_for("reduce"), port, base_url, _generate(args.user_id))
+    run_id = _run_model_phase(model_for("map"), port, base_url, _score(args.user_id))
+    _run_model_phase(model_for("reduce"), port, base_url, _generate(args.user_id, run_id))
     return 0
 
 
-def _run_model_phase(model: str, port: int, base_url: str, work) -> None:
+def _run_model_phase(model: str, port: int, base_url: str, work):
     server = subprocess.Popen(
         [
             sys.executable,
@@ -54,7 +55,7 @@ def _run_model_phase(model: str, port: int, base_url: str, work) -> None:
     )
     try:
         _wait_for_vllm(server, f"{base_url}/health")
-        work()
+        return work()
     finally:
         server.terminate()
         try:
@@ -79,15 +80,16 @@ def _score(user_id: str):
 
         response = _run_pipeline(user_id=user_id, stop_after_scoring=True)
         print(response.body.decode("utf-8"), flush=True)
+        return json.loads(response.body)["run"]["run_id"]
 
     return work
 
 
-def _generate(user_id: str):
+def _generate(user_id: str, run_id: str):
     def work() -> None:
         from stacktwin.api.routes.digest import _run_pipeline
 
-        response = _run_pipeline(user_id=user_id)
+        response = _run_pipeline(user_id=user_id, run_id=run_id)
         print(response.body.decode("utf-8"), flush=True)
 
     return work

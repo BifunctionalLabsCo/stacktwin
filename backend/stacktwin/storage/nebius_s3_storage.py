@@ -1,3 +1,5 @@
+import os
+from datetime import UTC, datetime
 from urllib.parse import quote
 
 import orjson
@@ -6,6 +8,8 @@ from stacktwin.learning.schema import WeeklyTrack
 from stacktwin.pipeline.run import PipelineRun
 from stacktwin.profile.schema import DeveloperProfile, WeeklyDigest
 from stacktwin.storage.base import StorageBackend
+
+PREFETCH_LEASE_SECONDS = int(os.getenv("STACKTWIN_PREFETCH_LEASE_SECONDS", "1800"))
 
 
 class NebiusS3Storage(StorageBackend):
@@ -306,13 +310,33 @@ class NebiusS3Storage(StorageBackend):
         return self._get_json(self._content_snapshot_key(week_start))
 
     def acquire_content_prefetch_lease(self, week_start: str, owner_id: str) -> bool:
+        key = self._content_lease_key(week_start)
+        payload = self._new_content_lease(owner_id)
         try:
             self.client.put_object(
                 Bucket=self.bucket,
-                Key=self._content_lease_key(week_start),
-                Body=orjson.dumps({"owner_id": owner_id, "status": "running"}),
+                Key=key,
+                Body=orjson.dumps(payload),
                 ContentType="application/json",
                 IfNoneMatch="*",
+            )
+            return True
+        except Exception as error:
+            code = getattr(error, "response", {}).get("Error", {}).get("Code")
+            if code not in {"PreconditionFailed", "412"}:
+                raise
+
+        response = self.client.get_object(Bucket=self.bucket, Key=key)
+        lease = orjson.loads(response["Body"].read())
+        if not self._can_reclaim_content_lease(lease):
+            return False
+        try:
+            self.client.put_object(
+                Bucket=self.bucket,
+                Key=key,
+                Body=orjson.dumps(payload),
+                ContentType="application/json",
+                IfMatch=response["ETag"],
             )
             return True
         except Exception as error:
@@ -336,10 +360,35 @@ class NebiusS3Storage(StorageBackend):
         lease = self.load_content_prefetch_lease(week_start)
         if not lease or lease.get("owner_id") != owner_id:
             return
-        payload = {"owner_id": owner_id, "status": status}
+        payload = {
+            "owner_id": owner_id,
+            "status": status,
+            "started_at": lease.get("started_at", datetime.now(UTC).isoformat()),
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
         if reason:
             payload["reason"] = reason[:300]
         self._put_json(self._content_lease_key(week_start), payload)
+
+    @staticmethod
+    def _new_content_lease(owner_id: str) -> dict[str, str]:
+        now = datetime.now(UTC).isoformat()
+        return {"owner_id": owner_id, "status": "running", "started_at": now, "updated_at": now}
+
+    @staticmethod
+    def _can_reclaim_content_lease(lease: dict | None) -> bool:
+        if not lease or lease.get("status") == "failed":
+            return True
+        if lease.get("status") != "running":
+            return False
+        timestamp = lease.get("updated_at") or lease.get("started_at")
+        if not isinstance(timestamp, str):
+            return True
+        try:
+            updated_at = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            return True
+        return (datetime.now(UTC) - updated_at).total_seconds() >= PREFETCH_LEASE_SECONDS
 
     def _find_run_key(self, user_id: str, run_id: str) -> str | None:
         for key in self._run_keys(user_id):

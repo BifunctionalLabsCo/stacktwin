@@ -6,6 +6,7 @@ import {
   getDefaultClassroomUsers,
   normalizeClassroomUserId,
   parseConfiguredClassroomUsers,
+  parseStoredClassroomUsers,
   type ClassroomUser
 } from "./classroom-user-data";
 
@@ -30,7 +31,7 @@ function readClassroomUsers() {
   }
 
   cachedCustomUsers = serialized;
-  cachedUsers = [...CLASSROOM_USERS, ...parseConfiguredClassroomUsers(serialized).filter(
+  cachedUsers = [...CLASSROOM_USERS, ...parseStoredClassroomUsers(serialized).filter(
     (candidate) => !CLASSROOM_USERS.some((user) => user.id === candidate.id)
   )];
   return cachedUsers;
@@ -98,7 +99,7 @@ export function createClassroomUser() {
   };
 
   if (typeof window !== "undefined") {
-    const customUsers = parseConfiguredClassroomUsers(
+    const customUsers = parseStoredClassroomUsers(
       window.localStorage.getItem(CUSTOM_USERS_STORAGE_KEY) ?? ""
     );
     window.localStorage.setItem(CUSTOM_USERS_STORAGE_KEY, JSON.stringify([...customUsers, user]));

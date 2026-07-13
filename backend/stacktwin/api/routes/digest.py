@@ -1,3 +1,6 @@
+import json
+import os
+import subprocess
 import time
 import uuid
 from collections import defaultdict
@@ -6,19 +9,20 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from stacktwin.jobs.nebius import submit_weekly_pipeline_job
+from stacktwin.learning.builder import build_weekly_track
+from stacktwin.pipeline.digest import DIGEST_SIZE, build_digest
+from stacktwin.pipeline.ingest import SOURCE_LIMIT, load_or_build_tag_index, load_or_fetch
 from stacktwin.pipeline.run import (
     PipelineRun,
     RunStage,
     SourceRunStatus,
     sanitize_failure_summary,
 )
-from stacktwin.storage.factory import get_storage
-from stacktwin.pipeline.digest import DIGEST_SIZE, build_digest
-from stacktwin.pipeline.ingest import SOURCE_LIMIT, load_or_fetch, load_or_build_tag_index
 from stacktwin.pipeline.score import filter_by_tags, score_articles
 from stacktwin.pipeline.sources.base import Article
 from stacktwin.profile.schema import ArticleScore
-from stacktwin.learning.builder import build_weekly_track
+from stacktwin.storage.factory import get_storage
 
 router = APIRouter()
 
@@ -59,6 +63,22 @@ def run_pipeline(user_id: str = Query(..., description="User email address")):
     The run record is persisted via the storage backend and returned to the
     caller alongside the existing pipeline result fields.
     """
+    if os.getenv("STACKTWIN_PIPELINE_EXECUTION", "local") == "nebius_job":
+        try:
+            job = submit_weekly_pipeline_job(user_id)
+        except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
+            raise HTTPException(status_code=502, detail=sanitize_failure_summary(error)) from error
+        return JSONResponse(
+            status_code=202,
+            content={
+                "status": "submitted",
+                "user_id": user_id,
+                "job_id": job.job_id,
+                "job_name": job.name,
+                "job_state": job.state,
+            },
+        )
+
     storage = get_storage()
     today = datetime.now(UTC).date()
     week_start = (today - timedelta(days=today.weekday())).isoformat()
@@ -139,19 +159,27 @@ def run_pipeline(user_id: str = Query(..., description="User email address")):
         raw_checkpoint = storage.load_scored_articles_for_week(user_id, week_start)
         already_scored = _deserialize_scored(raw_checkpoint)
         if already_scored:
-            _log(run.run_id, "scoring", f"checkpoint: {len(already_scored)} articles already scored")
+            _log(
+                run.run_id, "scoring", f"checkpoint: {len(already_scored)} articles already scored"
+            )
 
         tag_index = load_or_build_tag_index(articles)
         filtered = filter_by_tags(articles, profile, tag_index)
 
         def _persist_scored(article: Article, score: ArticleScore) -> None:
-            storage.save_scored_article(user_id, week_start, article.url, {
-                "article": article.to_dict(),
-                "score": score.model_dump(mode="json"),
-            })
+            storage.save_scored_article(
+                user_id,
+                week_start,
+                article.url,
+                {
+                    "article": article.to_dict(),
+                    "score": score.model_dump(mode="json"),
+                },
+            )
 
         scored = score_articles(
-            filtered, profile,
+            filtered,
+            profile,
             already_scored=already_scored,
             on_scored=_persist_scored,
         )

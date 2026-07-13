@@ -1,12 +1,14 @@
-import os
 import json
+import os
+
 import httpx
+
+from stacktwin.llm import model_for
 from stacktwin.profile.schema import DeveloperProfile
 
-
 NEBIUS_API_URL = os.getenv("NEBIUS_API_URL", "https://api.studio.nebius.com/v1")
-NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY", "")
-MODEL = os.getenv("NEBIUS_MODEL", "meta-llama/Meta-Llama-3.1-70B-Instruct")
+NEBIUS_API_KEY = os.getenv("NEBIUS_TOKEN") or os.getenv("NEBIUS_API_KEY", "")
+MODEL = model_for("map")
 
 
 SYSTEM_PROMPT = """
@@ -48,7 +50,7 @@ def build_profile_from_text(raw_text: str, source: str = "cv") -> DeveloperProfi
     Returns a structured DeveloperProfile.
     """
     if not NEBIUS_API_KEY:
-        raise EnvironmentError("NEBIUS_API_KEY is not set in environment variables")
+        raise OSError("NEBIUS_API_KEY is not set in environment variables")
 
     if not raw_text or len(raw_text.strip()) < 50:
         raise ValueError("Text too short to build a meaningful profile")
@@ -62,21 +64,18 @@ def build_profile_from_text(raw_text: str, source: str = "cv") -> DeveloperProfi
         "temperature": 0.1,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Extract the developer profile from this text:\n\n{truncated}"}
-        ]
+            {
+                "role": "user",
+                "content": f"Extract the developer profile from this text:\n\n{truncated}",
+            },
+        ],
     }
 
-    headers = {
-        "Authorization": f"Bearer {NEBIUS_API_KEY}",
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": f"Bearer {NEBIUS_API_KEY}", "Content-Type": "application/json"}
 
     try:
         response = httpx.post(
-            f"{NEBIUS_API_URL}/chat/completions",
-            json=payload,
-            headers=headers,
-            timeout=30.0
+            f"{NEBIUS_API_URL}/chat/completions", json=payload, headers=headers, timeout=30.0
         )
         response.raise_for_status()
     except httpx.HTTPStatusError as e:
@@ -95,8 +94,14 @@ def build_profile_from_text(raw_text: str, source: str = "cv") -> DeveloperProfi
         clean = clean.strip()
         data = json.loads(clean)
         list_fields = [
-            "current_stack", "learning", "domains", "certifications",
-            "learning_goals", "topics_to_track", "topics_to_avoid", "preferred_formats"
+            "current_stack",
+            "learning",
+            "domains",
+            "certifications",
+            "learning_goals",
+            "topics_to_track",
+            "topics_to_avoid",
+            "preferred_formats",
         ]
         for field in list_fields:
             if data.get(field) is None:
@@ -115,5 +120,6 @@ def build_profile_from_file(file_path: str) -> DeveloperProfile:
     Convenience wrapper that extracts text from file, then builds a profile.
     """
     from stacktwin.profile.extractor import extract_text_from_file
+
     raw_text = extract_text_from_file(file_path)
     return build_profile_from_text(raw_text, source="cv")

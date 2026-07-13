@@ -1,19 +1,20 @@
 import json
 import os
-import httpx
-from datetime import datetime, timedelta, UTC
-from stacktwin.pipeline.sources.base import Article
-from stacktwin.pipeline.sources.hackernews import HackerNewsSource
-from stacktwin.pipeline.sources.arxiv import ArxivSource
-from stacktwin.pipeline.sources.devto import DevToSource
-from stacktwin.pipeline.sources.github_trending import GitHubTrendingSource
-from stacktwin.pipeline.sources.youtube import YouTubeSource
+from datetime import UTC, datetime, timedelta
 
+import httpx
+
+from stacktwin.llm import model_for
+from stacktwin.pipeline.sources.arxiv import ArxivSource
+from stacktwin.pipeline.sources.base import Article
+from stacktwin.pipeline.sources.devto import DevToSource
+from stacktwin.pipeline.sources.hackernews import HackerNewsSource
+from stacktwin.pipeline.sources.youtube import YouTubeSource
 
 SOURCE_LIMIT = int(os.getenv("SOURCE_LIMIT", "50"))
 NEBIUS_API_URL = os.getenv("NEBIUS_API_URL", "https://api.studio.nebius.ai/v1")
-NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY", "")
-MODEL = os.getenv("NEBIUS_MODEL", "meta-llama/Meta-Llama-3.1-70B-Instruct")
+NEBIUS_API_KEY = os.getenv("NEBIUS_TOKEN") or os.getenv("NEBIUS_API_KEY", "")
+MODEL = model_for("map")
 
 TAG_INDEX_PROMPT = """
 You are a content tagger for a developer learning platform.
@@ -39,7 +40,7 @@ SOURCES = [
     HackerNewsSource(),
     ArxivSource(),
     DevToSource(),
-    #GitHubTrendingSource(),
+    # GitHubTrendingSource(),
     YouTubeSource(),
 ]
 
@@ -81,12 +82,7 @@ def save_articles(articles: list[Article], output_dir: str = "outputs") -> str:
     filepath = os.path.join(output_dir, filename)
 
     with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(
-            [a.to_dict() for a in articles],
-            f,
-            indent=2,
-            ensure_ascii=False
-        )
+        json.dump([a.to_dict() for a in articles], f, indent=2, ensure_ascii=False)
 
     print(f"[ingest] saved to {filepath}")
     return filepath
@@ -97,10 +93,12 @@ def _call_nebius_for_tags(articles_batch: list[Article]) -> list[dict]:
     if not NEBIUS_API_KEY:
         return []
 
-    article_list = "\n".join([
-        f"{i+1}. URL: {a.url}\n   Title: {a.title}\n   Existing tags: {', '.join(a.tags) or 'none'}"
-        for i, a in enumerate(articles_batch)
-    ])
+    article_list = "\n".join(
+        [
+            f"{i + 1}. URL: {a.url}\n   Title: {a.title}\n   Existing tags: {', '.join(a.tags) or 'none'}"
+            for i, a in enumerate(articles_batch)
+        ]
+    )
 
     payload = {
         "model": MODEL,
@@ -108,21 +106,15 @@ def _call_nebius_for_tags(articles_batch: list[Article]) -> list[dict]:
         "temperature": 0.1,
         "messages": [
             {"role": "system", "content": TAG_INDEX_PROMPT},
-            {"role": "user", "content": f"Tag these articles:\n\n{article_list}"}
-        ]
+            {"role": "user", "content": f"Tag these articles:\n\n{article_list}"},
+        ],
     }
 
-    headers = {
-        "Authorization": f"Bearer {NEBIUS_API_KEY}",
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": f"Bearer {NEBIUS_API_KEY}", "Content-Type": "application/json"}
 
     try:
         response = httpx.post(
-            f"{NEBIUS_API_URL}/chat/completions",
-            json=payload,
-            headers=headers,
-            timeout=60.0
+            f"{NEBIUS_API_URL}/chat/completions", json=payload, headers=headers, timeout=60.0
         )
         response.raise_for_status()
         raw = response.json()["choices"][0]["message"]["content"].strip()
@@ -159,7 +151,7 @@ def build_tag_index(articles: list[Article]) -> dict[str, list[str]]:
     total_batches = -(-len(articles) // batch_size)  # ceiling division
 
     for i in range(0, len(articles), batch_size):
-        batch = articles[i:i + batch_size]
+        batch = articles[i : i + batch_size]
         print(f"[ingest] tagging batch {i // batch_size + 1}/{total_batches}...")
         tagged = _call_nebius_for_tags(batch)
         all_tagged.extend(tagged)
@@ -230,11 +222,16 @@ def load_or_fetch(limit_per_source: int = 50, cache_dir: str = "outputs") -> lis
     week_monday = (today - timedelta(days=today.weekday())).strftime("%Y%m%d")
 
     if os.path.exists(cache_dir):
-        week_files = sorted([
-            f for f in os.listdir(cache_dir)
-            if f.startswith(f"articles_{week_monday}") and f.endswith(".json")
-            and "_tags" not in f
-        ], reverse=True)
+        week_files = sorted(
+            [
+                f
+                for f in os.listdir(cache_dir)
+                if f.startswith(f"articles_{week_monday}")
+                and f.endswith(".json")
+                and "_tags" not in f
+            ],
+            reverse=True,
+        )
 
         if week_files:
             cache_path = os.path.join(cache_dir, week_files[0])

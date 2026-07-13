@@ -74,6 +74,72 @@ The production classroom reads `GET /api/track/current` and week-scoped lesson r
 
 ## Pipeline Configuration
 
+### Nebius weekly pipeline Job
+
+Production-like development runs use a finite Nebius Serverless AI Job instead
+of an always-on model endpoint. Each Job starts local vLLM, waits for the model,
+runs the complete weekly pipeline for one learner, persists its results to Nebius
+Object Storage, terminates vLLM, and exits. GPU billing ends with the Job.
+
+Create a Nebius Container Registry once, configure its Docker credential helper,
+then build and push the Job image:
+
+```bash
+nebius registry create --name stacktwin
+nebius registry configure-helper
+
+docker build \
+  --platform linux/amd64 \
+  -f backend/stacktwin/pipeline/Dockerfile \
+  -t cr.eu-north1.nebius.cloud/<registry-path>/stacktwin-job:dev \
+  .
+docker push cr.eu-north1.nebius.cloud/<registry-path>/stacktwin-job:dev
+```
+
+Configure `.env` with the image, subnet, model, and Object Storage credentials:
+
+```bash
+STACKTWIN_PIPELINE_EXECUTION=nebius_job
+STACKTWIN_JOB_IMAGE=cr.eu-north1.nebius.cloud/e00wkter9vcdmapban/stacktwin-job@sha256:9a219ea40337cca143becbd6e3d9bf48b28c2ccbc4ebc7bfb550af87f689b0d3
+STACKTWIN_JOB_SUBNET_ID=<subnet-id>
+STACKTWIN_JOB_ENV_FILE=.env
+NEBIUS_MODEL_MODE=test
+NEBIUS_MODEL_TEST=Qwen/Qwen3-0.6B
+NEBIUS_MODEL_MAP=NousResearch/Hermes-4-70B
+NEBIUS_MODEL_RED=Qwen/Qwen3-235B-A22B-Thinking-2507
+STORAGE_BACKEND=nebius
+```
+
+The published digest pins the tested amd64 image used by this branch. Developers
+do not need to build or push an image for ordinary Job testing. Rebuild and push
+only when changing the Job container or backend code, then update the digest.
+
+`NEBIUS_MODEL_MODE=test` forces `NEBIUS_MODEL_TEST` for every LLM adapter:
+profile preparation, tag normalization, scoring, summaries, explanations, and
+quizzes. This guarantees that plumbing tests load only the small Qwen model.
+
+Production routing is prepared but deliberately not enabled in the single-model
+Job. In `prod` mode, map/preparation adapters resolve `NEBIUS_MODEL_MAP` and
+reduce/generation adapters resolve `NEBIUS_MODEL_RED`. Those models require
+different, substantially larger GPU presets, so production execution will split
+them into separate Job phases rather than loading both into the test Job.
+
+The API process needs the Nebius CLI installed and authenticated. A pipeline
+trigger submits the Job and returns `202 Accepted` with its ID:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/digest/run?user_id=<learner-email>"
+nebius ai job logs <job-id> --follow
+nebius ai job get <job-id>
+```
+
+For development, the launcher injects the configured local `.env` as a read-only
+Job file. Never commit that file. Production should replace file injection with
+MysteryBox-backed `--env-secret` values.
+
+Do not use the production models for Job plumbing tests. Resize the GPU presets
+and implement separate map/reduce phases before setting `NEBIUS_MODEL_MODE=prod`.
+
 Two environment variables control how much work the pipeline does each week:
 
 | Variable | Default | Effect |

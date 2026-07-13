@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import httpx
 
+from stacktwin.llm import model_for
 from stacktwin.pipeline.sources.base import Article
 from stacktwin.profile.schema import (
     ArticleScore,
@@ -13,8 +14,8 @@ from stacktwin.profile.schema import (
 )
 
 NEBIUS_API_URL = os.getenv("NEBIUS_API_URL", "https://api.studio.nebius.com/v1")
-NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY", "")
-MODEL = os.getenv("NEBIUS_MODEL", "meta-llama/Meta-Llama-3.1-70B-Instruct")
+NEBIUS_API_KEY = os.getenv("NEBIUS_TOKEN") or os.getenv("NEBIUS_API_KEY", "")
+MODEL = model_for("reduce")
 
 DIGEST_SIZE = int(os.getenv("DIGEST_SIZE", "10"))  # articles in weekly digest
 QUIZ_COUNT = int(os.getenv("QUIZ_COUNT", "3"))  # articles to generate quizzes for

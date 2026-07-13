@@ -60,7 +60,7 @@ export function AppNav() {
           >
             {users.map((user) => (
               <option key={user.id} value={user.id}>
-                {user.label} ({user.id})
+                {user.label}
               </option>
             ))}
             <option value={NEW_PROFILE_OPTION}>+ New Profile</option>

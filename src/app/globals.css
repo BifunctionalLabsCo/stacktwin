@@ -22,6 +22,8 @@
   --warn: #b45309;
   --danger: #b42318;
   --done: #2563eb;
+  --shadow-1: 0 1px 2px rgb(3 43 34 / 0.05);
+  --shadow-2: 0 4px 16px rgb(3 43 34 / 0.09);
 }
 
 /* Dark mode */
@@ -39,6 +41,8 @@
     --warn: #f59e0b;
     --danger: #f87171;
     --done: #60a5fa;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-2: 0 4px 16px rgb(0 0 0 / 0.45);
   }
 }
 
@@ -54,6 +58,8 @@
   --warn: #f59e0b;
   --danger: #f87171;
   --done: #60a5fa;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-2: 0 4px 16px rgb(0 0 0 / 0.45);
 }
 
 * {
@@ -66,6 +72,28 @@ body {
   color: var(--ink);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 
 button {
@@ -125,6 +153,7 @@ input:focus-visible {
   font-size: 0.88rem;
   font-weight: 700;
   text-decoration: none;
+  transition: background 140ms ease, color 140ms ease;
 }
 
 .appNav nav a:hover,
@@ -222,6 +251,17 @@ h1 {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+.launchCard {
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.launchCard:hover:not(.skeletonCard):not(.status-locked) {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  box-shadow: var(--shadow-2);
+  transform: translateY(-2px);
 }
 
 .influenceBand {
@@ -296,6 +336,7 @@ h1 {
   display: block;
   height: 100%;
   background: var(--gradient-brand);
+  transition: width 480ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .summaryStrip {
@@ -417,6 +458,12 @@ h1 {
   font-size: 0.78rem;
   font-weight: 700;
   text-decoration: none;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+
+.sourceHints a:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .cardBottom {
@@ -435,6 +482,16 @@ h1 {
   background: var(--gradient-brand);
   color: var(--accent-ink);
   text-decoration: none;
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.cardBottom a:hover {
+  box-shadow: var(--shadow-2);
+  transform: scale(1.07);
+}
+
+.cardBottom a:active {
+  transform: scale(0.97);
 }
 
 .cardBottom button:disabled {
@@ -500,6 +557,11 @@ h1 {
   transition: background 0.15s, color 0.15s;
 }
 
+.themeToggle button:hover:not([aria-pressed="true"]) {
+  color: var(--ink);
+  background: var(--soft);
+}
+
 .themeToggle button[aria-pressed="true"] {
   background: var(--gradient-brand);
   color: var(--accent-ink);
@@ -552,6 +614,11 @@ h1 {
   background: var(--surface);
   color: var(--muted);
   text-align: left;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.weekList button:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
 }
 
 .weekList button[aria-pressed="true"] {
@@ -695,6 +762,13 @@ h1 {
   text-decoration: none;
 }
 
+.backLink:hover,
+.secondaryLink:hover,
+.archiveItems a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .lessonHeader {
   max-width: 780px;
   padding: 36px 0 28px;
@@ -788,6 +862,16 @@ h1 {
   border: 1px solid var(--line);
   border-radius: 6px;
   cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.answerList label:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.answerList label:has(input:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
 }
 
 .answerList input {
@@ -807,15 +891,38 @@ h1 {
   font-weight: 750;
 }
 
+.primaryAction,
+.secondaryAction {
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
 .primaryAction {
   background: var(--accent);
   color: var(--accent-ink);
+}
+
+.primaryAction:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 88%, var(--ink));
+}
+
+.primaryAction:active:not(:disabled),
+.secondaryAction:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+.primaryAction:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .secondaryAction {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
+}
+
+.secondaryAction:hover:not(:disabled) {
+  border-color: var(--accent);
 }
 
 .secondaryAction:disabled {
@@ -861,6 +968,11 @@ h1 {
   font-size: 0.88rem;
   font-weight: 650;
   text-decoration: none;
+  transition: color 140ms ease;
+}
+
+.sourceRail a:hover {
+  color: var(--accent);
 }
 
 .lessonLoading {
@@ -1061,6 +1173,17 @@ h1 {
   background: var(--surface);
   color: var(--ink);
   font: inherit;
+  transition: border-color 140ms ease;
+}
+
+.reviewGrid input:hover,
+.reviewGrid select:hover,
+.userSwitcher select:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.reviewGrid input::placeholder {
+  color: color-mix(in srgb, var(--muted) 65%, transparent);
 }
 
 .reviewGrid fieldset {
@@ -1092,6 +1215,17 @@ h1 {
   border-radius: 999px;
   font-weight: 600;
   color: var(--ink);
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.formatOption:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.formatOption:has(input:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface));
 }
 
 @media (max-width: 860px) {

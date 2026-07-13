@@ -12,7 +12,7 @@ from stacktwin.jobs.nebius import (
 
 def test_submit_weekly_pipeline_job_builds_finite_job_command(monkeypatch, tmp_path: Path):
     env_file = tmp_path / ".env"
-    env_file.write_text("STORAGE_BACKEND=nebius\n")
+    env_file.write_text("STACKTWIN_APP_MODE=cloud\n")
     monkeypatch.setenv("STACKTWIN_JOB_IMAGE", "registry.example/stacktwin-job:test")
     monkeypatch.setenv("STACKTWIN_JOB_SUBNET_ID", "subnet-test")
     monkeypatch.setenv("STACKTWIN_JOB_ENV_FILE", str(env_file))
@@ -46,7 +46,7 @@ def test_submit_weekly_pipeline_job_builds_finite_job_command(monkeypatch, tmp_p
 
 
 def test_pipeline_route_returns_accepted_job(monkeypatch):
-    monkeypatch.setenv("STACKTWIN_PIPELINE_EXECUTION", "nebius_job")
+    monkeypatch.setenv("STACKTWIN_APP_MODE", "cloud")
     monkeypatch.setattr(
         digest,
         "submit_weekly_pipeline_job",
@@ -68,7 +68,7 @@ def test_pipeline_route_returns_accepted_job(monkeypatch):
 
 def test_submit_weekly_content_prefetch_job_builds_prefetch_command(monkeypatch, tmp_path: Path):
     env_file = tmp_path / ".env"
-    env_file.write_text("STORAGE_BACKEND=nebius\n")
+    env_file.write_text("STACKTWIN_APP_MODE=cloud\n")
     monkeypatch.setenv("STACKTWIN_JOB_IMAGE", "registry.example/stacktwin-job:test")
     monkeypatch.setenv("STACKTWIN_JOB_SUBNET_ID", "subnet-test")
     monkeypatch.setenv("STACKTWIN_JOB_ENV_FILE", str(env_file))
@@ -90,5 +90,7 @@ def test_submit_weekly_content_prefetch_job_builds_prefetch_command(monkeypatch,
     submit_weekly_content_prefetch_job("lease-owner")
 
     command = captured["command"]
-    assert command[command.index("--args") + 1] == "--prefetch-weekly-content --prefetch-owner lease-owner"
+    assert command[command.index("--args") + 1] == (
+        "--prefetch-weekly-content --prefetch-owner lease-owner"
+    )
     assert command[command.index("--name") + 1].startswith("stacktwin-prefetch-")

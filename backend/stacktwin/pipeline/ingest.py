@@ -175,7 +175,11 @@ def build_tag_index(articles: list[Article]) -> dict[str, list[str]]:
 
 
 def load_or_build_tag_index(
-    articles: list[Article], cache_dir: str = "outputs", storage=None, week_start: str | None = None
+    articles: list[Article],
+    cache_dir: str = "outputs",
+    storage=None,
+    week_start: str | None = None,
+    fallback_storage=None,
 ) -> dict[str, list[str]]:
     """
     Load this week's tag index if it exists, otherwise build it from articles.
@@ -188,6 +192,12 @@ def load_or_build_tag_index(
         if snapshot and snapshot.get("tag_index") is not None:
             print(f"[ingest] shared tag index cache hit for week of {week}")
             return snapshot["tag_index"]
+        if fallback_storage is not None:
+            fallback = fallback_storage.load_content_snapshot(week)
+            if fallback and fallback.get("tag_index") is not None:
+                storage.save_content_snapshot(week, fallback["articles"], fallback["tag_index"])
+                print(f"[ingest] restored shared tag index from cloud for week of {week}")
+                return fallback["tag_index"]
         tag_index = build_tag_index(articles)
         storage.save_content_snapshot(week, [article.to_dict() for article in articles], tag_index)
         print(f"[ingest] shared tag index saved for week of {week}")
@@ -223,6 +233,7 @@ def load_or_fetch(
     cache_dir: str = "outputs",
     storage=None,
     week_start: str | None = None,
+    fallback_storage=None,
 ) -> list[Article]:
     """
     Load this week's article cache if it exists, otherwise fetch fresh.
@@ -241,6 +252,14 @@ def load_or_fetch(
         if snapshot:
             print(f"[ingest] shared content cache hit for week of {week}")
             return [Article(**item) for item in snapshot["articles"]]
+        if fallback_storage is not None:
+            fallback = fallback_storage.load_content_snapshot(week)
+            if fallback:
+                storage.save_content_snapshot(
+                    week, fallback["articles"], fallback.get("tag_index")
+                )
+                print(f"[ingest] restored shared content from cloud for week of {week}")
+                return [Article(**item) for item in fallback["articles"]]
         articles = fetch_all(limit_per_source=limit_per_source)
         storage.save_content_snapshot(week, [article.to_dict() for article in articles], None)
         print(f"[ingest] shared content cache saved for week of {week}")
@@ -283,15 +302,26 @@ def load_or_fetch(
 
 
 def prefetch_weekly_content(
-    storage, limit_per_source: int = SOURCE_LIMIT, owner_id: str | None = None
+    storage,
+    limit_per_source: int = SOURCE_LIMIT,
+    owner_id: str | None = None,
+    fallback_storage=None,
 ) -> dict[str, int | str]:
     """Fetch and tag the shared weekly source pool without scoring any learner profile."""
     week_start = _week_start()
     try:
         articles = load_or_fetch(
-            limit_per_source=limit_per_source, storage=storage, week_start=week_start
+            limit_per_source=limit_per_source,
+            storage=storage,
+            week_start=week_start,
+            fallback_storage=fallback_storage,
         )
-        tag_index = load_or_build_tag_index(articles, storage=storage, week_start=week_start)
+        tag_index = load_or_build_tag_index(
+            articles,
+            storage=storage,
+            week_start=week_start,
+            fallback_storage=fallback_storage,
+        )
         if owner_id:
             storage.complete_content_prefetch_lease(week_start, owner_id)
         return {"week_start": week_start, "articles": len(articles), "tags": len(tag_index)}

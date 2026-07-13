@@ -7,7 +7,7 @@ import time
 import httpx
 from dotenv import load_dotenv
 
-from stacktwin.llm import model_for, model_mode
+from stacktwin.llm import app_mode, model_for
 
 
 def main() -> int:
@@ -19,22 +19,24 @@ def main() -> int:
     args = parser.parse_args()
 
     load_dotenv(os.getenv("STACKTWIN_JOB_ENV_PATH", "/run/secrets/stacktwin.env"))
-    mode = model_mode()
-    if mode != "test":
-        raise RuntimeError(
-            "Production map/reduce mode requires separate model phases; "
-            "run this single-model Job with NEBIUS_MODEL_MODE=test"
-        )
-    model = model_for("map")
+    if app_mode() != "cloud":
+        raise RuntimeError("Nebius Jobs require STACKTWIN_APP_MODE=cloud")
     port = int(os.getenv("STACKTWIN_JOB_VLLM_PORT", "8000"))
     base_url = f"http://127.0.0.1:{port}"
 
     os.environ["NEBIUS_API_URL"] = f"{base_url}/v1"
     os.environ["NEBIUS_API_KEY"] = "stacktwin-local-job"
     os.environ["NEBIUS_TOKEN"] = "stacktwin-local-job"
-    os.environ["STORAGE_BACKEND"] = "nebius"
-    os.environ["STACKTWIN_PIPELINE_EXECUTION"] = "local"
+    if args.prefetch_weekly_content:
+        _run_model_phase(model_for("map"), port, base_url, _prefetch(args.prefetch_owner))
+        return 0
 
+    _run_model_phase(model_for("map"), port, base_url, _score(args.user_id))
+    _run_model_phase(model_for("reduce"), port, base_url, _generate(args.user_id))
+    return 0
+
+
+def _run_model_phase(model: str, port: int, base_url: str, work) -> None:
     server = subprocess.Popen(
         [
             sys.executable,
@@ -52,23 +54,43 @@ def main() -> int:
     )
     try:
         _wait_for_vllm(server, f"{base_url}/health")
-        if args.prefetch_weekly_content:
-            from stacktwin.pipeline.ingest import prefetch_weekly_content
-            from stacktwin.storage.factory import get_storage
-
-            print(prefetch_weekly_content(get_storage(), owner_id=args.prefetch_owner), flush=True)
-        else:
-            from stacktwin.api.routes.digest import run_pipeline
-
-            response = run_pipeline(user_id=args.user_id)
-            print(response.body.decode("utf-8"), flush=True)
-        return 0
+        work()
     finally:
         server.terminate()
         try:
             server.wait(timeout=30)
         except subprocess.TimeoutExpired:
             server.kill()
+
+
+def _prefetch(owner_id: str | None):
+    def work() -> None:
+        from stacktwin.pipeline.ingest import prefetch_weekly_content
+        from stacktwin.storage.factory import get_storage
+
+        print(prefetch_weekly_content(get_storage(), owner_id=owner_id), flush=True)
+
+    return work
+
+
+def _score(user_id: str):
+    def work() -> None:
+        from stacktwin.api.routes.digest import _run_pipeline
+
+        response = _run_pipeline(user_id=user_id, stop_after_scoring=True)
+        print(response.body.decode("utf-8"), flush=True)
+
+    return work
+
+
+def _generate(user_id: str):
+    def work() -> None:
+        from stacktwin.api.routes.digest import _run_pipeline
+
+        response = _run_pipeline(user_id=user_id)
+        print(response.body.decode("utf-8"), flush=True)
+
+    return work
 
 
 def _wait_for_vllm(server: subprocess.Popen, health_url: str) -> None:

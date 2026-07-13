@@ -8,6 +8,6 @@ COPY backend ./backend
 RUN python3 -m pip install --no-cache-dir .
 
 ENV PYTHONUNBUFFERED=1
-ENV STORAGE_BACKEND=nebius
+ENV STACKTWIN_APP_MODE=cloud
 
 ENTRYPOINT ["python3", "-m", "stacktwin.pipeline.job"]

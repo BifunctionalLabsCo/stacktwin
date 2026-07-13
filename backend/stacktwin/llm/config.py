@@ -2,19 +2,19 @@ import os
 from typing import Literal
 
 ModelStage = Literal["map", "reduce"]
-ModelMode = Literal["test", "prod"]
+AppMode = Literal["local", "cloud"]
 
 
-def model_mode() -> ModelMode:
-    mode = os.getenv("NEBIUS_MODEL_MODE", "test").lower()
-    if mode not in ("test", "prod"):
-        raise ValueError("NEBIUS_MODEL_MODE must be either 'test' or 'prod'")
+def app_mode() -> AppMode:
+    mode = os.getenv("STACKTWIN_APP_MODE", "local").lower()
+    if mode not in ("local", "cloud"):
+        raise ValueError("STACKTWIN_APP_MODE must be either 'local' or 'cloud'")
     return mode
 
 
 def model_for(stage: ModelStage) -> str:
-    """Resolve the configured model, forcing one small model in test mode."""
-    if model_mode() == "test":
+    """Use one small model locally and stage-specific production models in cloud mode."""
+    if app_mode() == "local":
         return os.getenv("NEBIUS_MODEL_TEST", "Qwen/Qwen3-0.6B")
     if stage == "map":
         return os.getenv("NEBIUS_MODEL_MAP", "NousResearch/Hermes-4-70B")

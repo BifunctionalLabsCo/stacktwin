@@ -1,13 +1,15 @@
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import stacktwin.pipeline.score as _score_module
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from stacktwin.api.main import app
 from stacktwin.api.routes import digest as digest_routes
 from stacktwin.pipeline.sources.base import Article
 from stacktwin.profile.schema import DeveloperProfile
 from stacktwin.storage.json_storage import JSONStorage
-import stacktwin.pipeline.score as _score_module
 
 from tests.test_storage import _digest
 
@@ -41,15 +43,19 @@ def _fake_articles():
     ]
 
 
+def _body(response) -> dict:
+    return json.loads(response.body)
+
+
 def test_run_success_records_succeeded_run(monkeypatch, tmp_path):
     storage = _storage_with_profile(tmp_path)
     monkeypatch.setattr(digest_routes, "get_storage", lambda: storage)
     monkeypatch.setattr(digest_routes, "load_or_fetch", lambda **kwargs: _fake_articles())
     monkeypatch.setattr(digest_routes, "load_or_build_tag_index", lambda articles, **kwargs: {})
 
-    response = client.post("/api/digest/run?user_id=ada@example.com")
+    response = digest_routes._run_pipeline("ada@example.com")
     assert response.status_code == 200
-    body = response.json()
+    body = _body(response)
     assert body["status"] == "computed"
     assert body["run"]["status"] == "succeeded"
     assert body["run"]["current_stage"] == "done"
@@ -73,8 +79,9 @@ def test_run_failure_records_failed_run_with_sanitized_summary(monkeypatch, tmp_
 
     monkeypatch.setattr(digest_routes, "load_or_fetch", _boom)
 
-    response = client.post("/api/digest/run?user_id=ada@example.com")
-    assert response.status_code == 500
+    with pytest.raises(HTTPException, match="network exploded") as error:
+        digest_routes._run_pipeline("ada@example.com")
+    assert error.value.status_code == 500
 
     latest = client.get("/api/digest/runs/latest?user_id=ada@example.com")
     assert latest.status_code == 200
@@ -94,13 +101,14 @@ def test_retry_after_failure_creates_new_run_id(monkeypatch, tmp_path):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(digest_routes, "load_or_fetch", _boom)
-    client.post("/api/digest/run?user_id=ada@example.com")
+    with pytest.raises(HTTPException):
+        digest_routes._run_pipeline("ada@example.com")
     failed_run_id = storage.load_latest_run("ada@example.com").run_id
 
     monkeypatch.setattr(digest_routes, "load_or_fetch", lambda **kwargs: _fake_articles())
-    retry_response = client.post("/api/digest/run?user_id=ada@example.com")
+    retry_response = digest_routes._run_pipeline("ada@example.com")
     assert retry_response.status_code == 200
-    retried_run_id = retry_response.json()["run"]["run_id"]
+    retried_run_id = _body(retry_response)["run"]["run_id"]
 
     assert retried_run_id != failed_run_id
 
@@ -122,9 +130,9 @@ def test_skipped_existing_run_is_distinguishable_from_fresh_run(monkeypatch, tmp
     storage.save_track("ada@example.com", build_weekly_track(_digest(week_start), profile))
     monkeypatch.setattr(digest_routes, "get_storage", lambda: storage)
 
-    response = client.post("/api/digest/run?user_id=ada@example.com")
+    response = digest_routes._run_pipeline("ada@example.com")
     assert response.status_code == 200
-    body = response.json()
+    body = _body(response)
     assert body["status"] == "digest-already-exists"
     assert body["run"]["status"] == "skipped_existing"
 
@@ -140,7 +148,7 @@ def test_run_routes_enforce_user_isolation(monkeypatch, tmp_path):
     monkeypatch.setattr(digest_routes, "load_or_fetch", lambda **kwargs: _fake_articles())
     monkeypatch.setattr(digest_routes, "load_or_build_tag_index", lambda articles, **kwargs: {})
 
-    client.post("/api/digest/run?user_id=ada@example.com")
+    digest_routes._run_pipeline("ada@example.com")
 
     bo_latest = client.get("/api/digest/runs/latest?user_id=bo@example.com")
     assert bo_latest.status_code == 404
@@ -167,7 +175,7 @@ def test_no_track_yet_has_no_run_record(monkeypatch, tmp_path, user_id):
 
 
 class _TrackingStorage(JSONStorage):
-    """JSONStorage subclass that tracks save_scored_article calls and supports a pre-set checkpoint."""
+    """JSONStorage with tracked saves and a pre-set scored checkpoint."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -197,9 +205,9 @@ def test_resume_empty_checkpoint_behaves_like_fresh_run(monkeypatch, tmp_path):
     monkeypatch.setattr(digest_routes, "load_or_fetch", lambda **kwargs: _fake_articles())
     monkeypatch.setattr(digest_routes, "load_or_build_tag_index", lambda articles, **kwargs: {})
 
-    response = client.post("/api/digest/run?user_id=ada@example.com")
+    response = digest_routes._run_pipeline("ada@example.com")
     assert response.status_code == 200
-    assert response.json()["status"] == "computed"
+    assert _body(response)["status"] == "computed"
     # Both articles were newly scored and checkpointed
     assert set(storage.saved_scored_urls) == {
         "https://example.com/a",
@@ -228,7 +236,7 @@ def test_resume_skips_checkpointed_articles(monkeypatch, tmp_path):
         {"article": article_a.to_dict(), "score": stub_score.model_dump(mode="json")}
     ]
 
-    response = client.post("/api/digest/run?user_id=ada@example.com")
+    response = digest_routes._run_pipeline("ada@example.com")
     assert response.status_code == 200
     # article_a was in checkpoint — must NOT be re-saved
     assert article_a.url not in storage.saved_scored_urls
@@ -245,6 +253,6 @@ def test_resume_corrupt_checkpoint_entry_is_skipped(monkeypatch, tmp_path):
 
     storage._checkpoint = [{"article": {"bad": "data"}, "score": {}}]
 
-    response = client.post("/api/digest/run?user_id=ada@example.com")
+    response = digest_routes._run_pipeline("ada@example.com")
     assert response.status_code == 200
-    assert response.json()["status"] == "computed"
+    assert _body(response)["status"] == "computed"

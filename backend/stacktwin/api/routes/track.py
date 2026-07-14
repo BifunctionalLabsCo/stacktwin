@@ -293,6 +293,13 @@ def get_current_track(user_id: str = Query(..., description="User email address"
     today = datetime.now(UTC).date()
     week_start = (today - timedelta(days=today.weekday())).isoformat()
     track = storage.load_track_by_week(user_id, week_start)
+    if not track and app_mode() == "local":
+        try:
+            track = get_cloud_storage().load_track_by_week(user_id, week_start)
+            if track:
+                storage.save_track(user_id, track)
+        except OSError:
+            pass
     if not track:
         raise HTTPException(
             status_code=404,

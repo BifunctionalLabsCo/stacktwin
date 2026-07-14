@@ -6,7 +6,7 @@ import httpx
 from stacktwin.llm import model_for
 from stacktwin.profile.schema import DeveloperProfile
 
-NEBIUS_API_URL = os.getenv("NEBIUS_API_URL", "https://api.studio.nebius.com/v1")
+NEBIUS_API_URL = os.getenv("NEBIUS_API_URL", "https://api.studio.nebius.ai/v1")
 NEBIUS_API_KEY = os.getenv("NEBIUS_TOKEN") or os.getenv("NEBIUS_API_KEY", "")
 MODEL = model_for("map")
 

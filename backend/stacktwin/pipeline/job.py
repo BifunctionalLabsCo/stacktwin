@@ -20,8 +20,12 @@ def main() -> int:
     args = parser.parse_args()
 
     load_dotenv(os.getenv("STACKTWIN_JOB_ENV_PATH", "/run/secrets/stacktwin.env"))
-    if app_mode() != "cloud":
-        raise RuntimeError("Nebius Jobs require STACKTWIN_APP_MODE=cloud")
+    requested_model_mode = app_mode()
+    # Jobs always use S3 so the app can observe their durable state. Preserve
+    # the caller's tier separately: a local app run uses Qwen, cloud uses the
+    # production map/reduce pair.
+    os.environ["STACKTWIN_APP_MODE"] = "cloud"
+    os.environ["STACKTWIN_MODEL_MODE"] = requested_model_mode
     port = int(os.getenv("STACKTWIN_JOB_VLLM_PORT", "8000"))
     base_url = f"http://127.0.0.1:{port}"
 

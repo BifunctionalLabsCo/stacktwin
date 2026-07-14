@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 from stacktwin.api.main import app
 from stacktwin.api.routes import digest as digest_routes
@@ -82,11 +84,13 @@ def test_existing_weekly_digest_backfills_track_without_pipeline(monkeypatch, tm
     storage.save_digest("ada@example.com", _digest(week_start))
     monkeypatch.setattr(digest_routes, "get_storage", lambda: storage)
 
-    response = client.post("/api/digest/run?user_id=ada@example.com")
-    repeated = client.post("/api/digest/run?user_id=ada@example.com")
+    response = digest_routes._run_pipeline("ada@example.com")
+    repeated = digest_routes._run_pipeline("ada@example.com")
+    response_body = json.loads(response.body)
+    repeated_body = json.loads(repeated.body)
 
     assert response.status_code == 200
-    assert response.json()["status"] == "track-backfilled"
-    assert response.json()["week_start"] == week_start
+    assert response_body["status"] == "track-backfilled"
+    assert response_body["week_start"] == week_start
     assert storage.track_exists("ada@example.com", week_start)
-    assert repeated.json()["status"] == "digest-already-exists"
+    assert repeated_body["status"] == "digest-already-exists"

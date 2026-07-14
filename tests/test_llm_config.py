@@ -1,5 +1,5 @@
 import pytest
-from stacktwin.llm.config import app_mode, model_for
+from stacktwin.llm.config import app_mode, model_for, model_mode
 
 
 def test_local_mode_forces_one_model_for_all_stages(monkeypatch):
@@ -19,6 +19,17 @@ def test_cloud_mode_routes_map_and_reduce_models(monkeypatch):
 
     assert model_for("map") == "NousResearch/map"
     assert model_for("reduce") == "Qwen/reduce"
+
+
+def test_job_can_use_local_model_tier_with_cloud_storage_mode(monkeypatch):
+    monkeypatch.setenv("STACKTWIN_APP_MODE", "cloud")
+    monkeypatch.setenv("STACKTWIN_MODEL_MODE", "local")
+    monkeypatch.setenv("NEBIUS_MODEL_TEST", "Qwen/test")
+
+    assert app_mode() == "cloud"
+    assert model_mode() == "local"
+    assert model_for("map") == "Qwen/test"
+    assert model_for("reduce") == "Qwen/test"
 
 
 def test_invalid_app_mode_fails_fast(monkeypatch):

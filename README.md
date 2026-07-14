@@ -107,7 +107,7 @@ docker push cr.eu-north1.nebius.cloud/<registry-path>/stacktwin-job:dev
 Configure `.env` with the image, subnet, model, and Object Storage credentials:
 
 ```bash
-STACKTWIN_APP_MODE=cloud
+STACKTWIN_APP_MODE=local
 STACKTWIN_JOB_IMAGE=cr.eu-north1.nebius.cloud/e00wkter9vcdmapban/stacktwin-job@sha256:9a219ea40337cca143becbd6e3d9bf48b28c2ccbc4ebc7bfb550af87f689b0d3
 STACKTWIN_JOB_SUBNET_ID=<subnet-id>
 STACKTWIN_JOB_ENV_FILE=.env
@@ -120,15 +120,15 @@ The published digest pins the tested amd64 image used by this branch. Developers
 do not need to build or push an image for ordinary Job testing. Rebuild and push
 only when changing the Job container or backend code, then update the digest.
 
-`STACKTWIN_APP_MODE=local` uses `NEBIUS_MODEL_TEST` for every LLM call and
-keeps profiles, tracks, and newly fetched weekly content in local JSON files.
-If this week's local shared content is absent, StackTwin restores it from Nebius
-Object Storage when credentials are configured before fetching anything new.
+Both modes submit finite Nebius Jobs; no persistent model endpoint is required.
+Every Job uses Object Storage for its durable run state, shared content, scored
+checkpoint, digest, and track, then exits. The application caches what it reads
+locally, preferring that cache before refreshing it from Object Storage.
 
-`STACKTWIN_APP_MODE=cloud` stores every artifact in Object Storage. Each
-pipeline trigger submits one finite Nebius Job: Hermes performs tagging and
-scoring, checkpointing its results to S3; Qwen then generates the digest and
-learning track from that checkpoint; the Job exits.
+`STACKTWIN_APP_MODE=local` starts Qwen 0.6B for both Job phases. It is the
+inexpensive full-flow mode for a locally running app. `STACKTWIN_APP_MODE=cloud`
+uses Hermes for tagging and scoring, then the designated Qwen model for digest
+and learning-track generation.
 
 The API process needs the Nebius CLI installed and authenticated. A pipeline
 trigger submits the Job and returns `202 Accepted` with its ID:

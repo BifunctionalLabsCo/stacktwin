@@ -66,6 +66,32 @@ def test_pipeline_route_returns_accepted_job(monkeypatch):
     }
 
 
+def test_local_pipeline_route_syncs_profile_then_submits_qwen_job(monkeypatch, tmp_path: Path):
+    from stacktwin.profile.schema import DeveloperProfile
+    from stacktwin.storage.json_storage import JSONStorage
+
+    local_storage = JSONStorage(
+        profiles_dir=str(tmp_path / "profiles"), outputs_dir=str(tmp_path / "outputs")
+    )
+    cloud_storage = JSONStorage(
+        profiles_dir=str(tmp_path / "cloud-profiles"), outputs_dir=str(tmp_path / "cloud-outputs")
+    )
+    local_storage.save_profile("ada@example.com", DeveloperProfile(name="Ada"))
+    monkeypatch.setenv("STACKTWIN_APP_MODE", "local")
+    monkeypatch.setattr(digest, "get_storage", lambda: local_storage)
+    monkeypatch.setattr(digest, "get_cloud_storage", lambda: cloud_storage)
+    monkeypatch.setattr(
+        digest,
+        "submit_weekly_pipeline_job",
+        lambda user_id: SubmittedJob("job-test", "stacktwin-weekly-test", "STARTING"),
+    )
+
+    response = digest.run_pipeline(user_id="ada@example.com")
+
+    assert response.status_code == 202
+    assert cloud_storage.load_profile("ada@example.com").name == "Ada"
+
+
 def test_submit_weekly_content_prefetch_job_builds_prefetch_command(monkeypatch, tmp_path: Path):
     env_file = tmp_path / ".env"
     env_file.write_text("STACKTWIN_APP_MODE=cloud\n")

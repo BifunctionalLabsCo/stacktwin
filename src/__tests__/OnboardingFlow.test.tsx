@@ -45,18 +45,12 @@ afterEach(() => {
 });
 
 describe("OnboardingFlow manual entry path", () => {
-  it("walks through manual entry, review, and generation to the classroom", async () => {
+  it("walks through manual entry, review, and profile confirmation to the classroom", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url.includes("/api/profile/manual")) {
         const body = JSON.parse(init?.body as string);
         return jsonResponse({ status: "ok", user_id: "demo", profile: body });
-      }
-      if (url.includes("/api/digest/runs/latest")) {
-        return jsonResponse({ learner_status: "ready" });
-      }
-      if (url.includes("/api/digest/run")) {
-        return jsonResponse({ status: "computed" });
       }
       throw new Error(`unexpected fetch ${url}`);
     });
@@ -69,12 +63,16 @@ describe("OnboardingFlow manual entry path", () => {
     expect(await screen.findByLabelText(/developer profile review/i)).toBeInTheDocument();
 
     await user.type(screen.getByLabelText(/^name$/i), "Ada Lovelace");
-    await user.click(screen.getByRole("button", { name: /confirm and generate my first week/i }));
+    await user.click(screen.getByRole("button", { name: /confirm profile/i }));
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/api/profile/manual"),
       expect.objectContaining({ method: "POST" })
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/digest/run"),
+      expect.anything()
     );
   });
 });
@@ -96,7 +94,7 @@ describe("OnboardingFlow quick start path", () => {
     expect(screen.getByLabelText(/^current role$/i)).toHaveValue("AI Content Creator");
   });
 
-  it("saves a compact seeded profile and starts generation", async () => {
+  it("saves a compact seeded profile without starting generation", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url.includes("/api/profile/manual")) {
@@ -105,12 +103,6 @@ describe("OnboardingFlow quick start path", () => {
         expect(body.current_stack).toEqual(["FastAPI", "Supabase", "React"]);
         expect(body.preferred_formats).toEqual([]);
         return jsonResponse({ status: "ok", user_id: "demo", profile: body });
-      }
-      if (url.includes("/api/digest/runs/latest")) {
-        return jsonResponse({ learner_status: "ready" });
-      }
-      if (url.includes("/api/digest/run")) {
-        return jsonResponse({ status: "computed" });
       }
       throw new Error(`unexpected fetch ${url}`);
     });
@@ -124,7 +116,7 @@ describe("OnboardingFlow quick start path", () => {
     await user.clear(screen.getByLabelText(/^name$/i));
     await user.type(screen.getByLabelText(/^name$/i), "Ada Lovelace");
     await user.type(screen.getByLabelText(/learning goals/i), ", deepen product instincts");
-    await user.click(screen.getByRole("button", { name: /create profile and generate week/i }));
+    await user.click(screen.getByRole("button", { name: /create profile/i }));
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
     expect(fetchMock).toHaveBeenCalledWith(
@@ -184,33 +176,14 @@ describe("OnboardingFlow error recovery", () => {
 
     render(<OnboardingFlow initialProfile={emptyProfile()} />);
 
-    await user.click(screen.getByRole("button", { name: /confirm and generate my first week/i }));
+    await user.type(screen.getByLabelText(/^name$/i), "Ada");
+    await user.click(screen.getByRole("button", { name: /confirm profile/i }));
 
     expect(
       await screen.findByText(/could not reach the stacktwin backend/i)
     ).toBeInTheDocument();
   });
 
-  it("surfaces a failed generation with a retry action", async () => {
-    const user = userEvent.setup();
-    const fetchMock = vi.fn(async (url: string) => {
-      if (url.includes("/api/digest/runs/latest")) {
-        return jsonResponse({ learner_status: "failed", failure_summary: "ValueError: bad profile" });
-      }
-      if (url.includes("/api/digest/run")) {
-        return jsonResponse({ status: "computed" });
-      }
-      throw new Error(`unexpected fetch ${url}`);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    render(<OnboardingFlow initialProfile={emptyProfile()} />);
-
-    await user.click(screen.getByRole("button", { name: /confirm and generate my first week/i }));
-
-    expect(await screen.findByText(/bad profile/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /retry generation/i })).toBeInTheDocument();
-  });
 });
 
 describe("OnboardingFlow CV upload happy path", () => {

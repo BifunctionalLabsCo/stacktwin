@@ -5,7 +5,8 @@ from fastapi.responses import JSONResponse
 
 from stacktwin.api.models import LessonModuleResponse, WeeklyTrackResponse
 from stacktwin.learning.schema import LearningModule, WeeklyTrack
-from stacktwin.storage.factory import get_storage
+from stacktwin.llm import app_mode
+from stacktwin.storage.factory import get_cloud_storage, get_storage
 
 router = APIRouter()
 
@@ -300,6 +301,21 @@ def get_current_track(user_id: str = Query(..., description="User email address"
                 "message": "No generated weekly track is ready for this learner.",
             },
         )
+    return WeeklyTrackResponse.model_validate(track, from_attributes=True)
+
+
+@router.get("/latest", response_model=WeeklyTrackResponse)
+def get_latest_track(user_id: str = Query(..., description="User email address")):
+    """Return the newest available track, preferring local storage over cloud fallback."""
+    storage = get_storage()
+    track = storage.load_latest_track(user_id)
+    if not track and app_mode() == "local":
+        try:
+            track = get_cloud_storage().load_latest_track(user_id)
+        except OSError:
+            pass
+    if not track:
+        raise HTTPException(status_code=404, detail="No previous weekly track is available.")
     return WeeklyTrackResponse.model_validate(track, from_attributes=True)
 
 

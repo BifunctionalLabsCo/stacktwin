@@ -33,6 +33,7 @@ export type WeeklyTrackState =
   | { status: "preparing_content" }
   | { status: "profile_required"; message: string }
   | { status: "empty"; message: string }
+  | { status: "stale"; track: WeeklyTrack }
   | { status: "error"; message: string }
   | { status: "ready"; track: WeeklyTrack };
 
@@ -99,6 +100,17 @@ export async function fetchWeeklyTrackState(userId = getClassroomUserId()): Prom
       status: "error",
       message: "The weekly track API could not be reached. Start the FastAPI service and retry."
     };
+  }
+}
+
+export async function fetchLatestWeeklyTrack(userId = getClassroomUserId()): Promise<WeeklyTrack | null> {
+  try {
+    const response = await fetch(`/api/track/latest?user_id=${encodeURIComponent(userId)}`, {
+      headers: { Accept: "application/json" }
+    });
+    return response.ok ? ((await response.json()) as WeeklyTrack) : null;
+  } catch {
+    return null;
   }
 }
 

@@ -152,7 +152,10 @@ def _learner_focus(profile: DeveloperProfile) -> str:
 
 
 def _first_sentence(value: str) -> str:
-    return value.strip().split(".", maxsplit=1)[0].strip()
+    # A period inside a technology name, such as Next.js, is not a sentence
+    # boundary. Only split when punctuation ends a sentence before whitespace
+    # or the end of the value.
+    return re.split(r"[.!?](?=\s|$)", value.strip(), maxsplit=1)[0].strip()
 
 
 def _week_label(week_start: str) -> str:

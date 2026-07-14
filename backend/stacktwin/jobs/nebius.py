@@ -15,13 +15,22 @@ class SubmittedJob:
 
 def submit_weekly_pipeline_job(user_id: str) -> SubmittedJob:
     """Submit one finite Nebius Job that generates a learner's weekly track."""
+    return _submit_job(f"--user-id {user_id}", "weekly")
+
+
+def submit_weekly_content_prefetch_job(owner_id: str) -> SubmittedJob:
+    """Submit one finite Nebius Job that refreshes the shared weekly source pool."""
+    return _submit_job(f"--prefetch-weekly-content --prefetch-owner {owner_id}", "prefetch")
+
+
+def _submit_job(job_args: str, job_kind: str) -> SubmittedJob:
     image = _required("STACKTWIN_JOB_IMAGE")
     subnet_id = _required("STACKTWIN_JOB_SUBNET_ID")
     env_file = Path(os.getenv("STACKTWIN_JOB_ENV_FILE", ".env")).resolve()
     if not env_file.is_file():
         raise OSError(f"StackTwin Job env file does not exist: {env_file}")
 
-    name = f"stacktwin-weekly-{uuid.uuid4().hex[:12]}"
+    name = f"stacktwin-{job_kind}-{uuid.uuid4().hex[:12]}"
     command = [
         os.getenv("NEBIUS_CLI", "nebius"),
         "ai",
@@ -34,7 +43,7 @@ def submit_weekly_pipeline_job(user_id: str) -> SubmittedJob:
         "--container-command",
         "python3 -m stacktwin.pipeline.job",
         "--args",
-        f"--user-id {user_id}",
+        job_args,
         "--platform",
         os.getenv("STACKTWIN_JOB_PLATFORM", "gpu-l40s-a"),
         "--preset",

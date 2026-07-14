@@ -1,17 +1,8 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import { CONTENT_FORMATS, EXPERIENCE_LEVELS } from "../lib/onboarding";
+import { EXPERIENCE_LEVELS } from "../lib/onboarding";
 import type { DeveloperProfile } from "../lib/profile-types";
-
-const FORMAT_LABELS: Record<string, string> = {
-  short_summary: "Short summary",
-  hands_on: "Hands-on",
-  deep_dive: "Deep dive",
-  quiz: "Quiz",
-  video: "Video",
-  podcast: "Podcast"
-};
 
 function toListInput(values: string[]) {
   return values.join(", ");
@@ -44,18 +35,6 @@ export function ProfileReviewForm({
 
   function update<K extends keyof DeveloperProfile>(key: K, value: DeveloperProfile[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
-  }
-
-  function toggleFormat(format: string) {
-    setDraft((current) => {
-      const isSelected = current.preferred_formats.includes(format as never);
-      return {
-        ...current,
-        preferred_formats: isSelected
-          ? current.preferred_formats.filter((entry) => entry !== format)
-          : [...current.preferred_formats, format as never]
-      };
-    });
   }
 
   return (
@@ -211,21 +190,6 @@ export function ProfileReviewForm({
           />
         </label>
 
-        <fieldset className="reviewFieldWide">
-          <legend>Preferred formats</legend>
-          <div className="formatOptions">
-            {CONTENT_FORMATS.map((format) => (
-              <label key={format} className="formatOption">
-                <input
-                  type="checkbox"
-                  checked={draft.preferred_formats.includes(format)}
-                  onChange={() => toggleFormat(format)}
-                />
-                {FORMAT_LABELS[format]}
-              </label>
-            ))}
-          </div>
-        </fieldset>
       </div>
 
       <button type="submit" className="primaryAction" disabled={submitting}>

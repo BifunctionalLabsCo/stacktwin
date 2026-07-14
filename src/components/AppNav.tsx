@@ -1,18 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Archive, CalendarDays, UserCircle } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import {
+  createClassroomUser,
   setClassroomUserId,
   useActiveClassroomUserId,
   useClassroomUsers
 } from "../lib/classroom-user";
 
+const NEW_PROFILE_OPTION = "__new_profile__";
 
 export function AppNav() {
   const pathname = usePathname();
+  const router = useRouter();
   const activeUserId = useActiveClassroomUserId();
   const users = useClassroomUsers();
   const activeUser = users.find((user) => user.id === activeUserId) ?? users[0];
@@ -45,14 +48,22 @@ export function AppNav() {
           <select
             id="classroom-user-switcher"
             value={activeUser?.id ?? ""}
-            onChange={(event) => setClassroomUserId(event.target.value)}
+            onChange={(event) => {
+              if (event.target.value === NEW_PROFILE_OPTION) {
+                createClassroomUser();
+                router.push("/onboarding/?start=new");
+                return;
+              }
+              setClassroomUserId(event.target.value);
+            }}
             aria-label="Switch active learner"
           >
             {users.map((user) => (
               <option key={user.id} value={user.id}>
-                {user.label} ({user.id})
+                {user.label}
               </option>
             ))}
+            <option value={NEW_PROFILE_OPTION}>+ New Profile</option>
           </select>
         </label>
         <ThemeToggle />

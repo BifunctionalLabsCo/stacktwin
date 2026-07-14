@@ -5,9 +5,9 @@ export type ClassroomUser = {
 };
 
 const FALLBACK_USERS: ClassroomUser[] = [
-  { id: "demo@stacktwin.dev", label: "Demo learner", description: "Default classroom" },
-  { id: "soumya@gmail.com", label: "Soumya", description: "Saved profile demo" },
-  { id: "john@company.com", label: "John", description: "Archive demo" }
+  { id: "engineer@stacktwin.dev", label: "Engineer", description: "Systems, tooling, and product engineering" },
+  { id: "creator@stacktwin.dev", label: "Creator", description: "Ideas, storytelling, and product craft" },
+  { id: "researcher@stacktwin.dev", label: "Researcher", description: "Evidence, emerging technology, and insight" }
 ];
 
 export function getDefaultClassroomUsers() {
@@ -48,6 +48,19 @@ export function parseConfiguredClassroomUsers(rawValue: string | undefined): Cla
     .filter((entry): entry is ClassroomUser => entry !== null);
 
   return normalized.length > 0 ? normalized : FALLBACK_USERS;
+}
+
+/** Parse persisted user-created profiles without injecting demo fallbacks. */
+export function parseStoredClassroomUsers(rawValue: string | undefined): ClassroomUser[] {
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    return normalizeUsers(JSON.parse(rawValue));
+  } catch {
+    return [];
+  }
 }
 
 export function normalizeClassroomUserId(userId: string | null | undefined, users = FALLBACK_USERS) {

@@ -42,6 +42,7 @@ export function ThemeToggle() {
           key={value}
           type="button"
           aria-label={label}
+          title={`${label} theme`}
           aria-pressed={theme === value}
           onClick={() => select(value)}
         >

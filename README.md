@@ -64,9 +64,9 @@ The compiled app opens on the learner's latest generated weekly track. It includ
 
 The nav includes a learner switcher that changes the active `user_id` in-browser without a reload. By default the app ships with a small demo set:
 
-- `demo@stacktwin.dev`
-- `soumya@gmail.com`
-- `john@company.com`
+- `engineer@stacktwin.dev`
+- `creator@stacktwin.dev`
+- `researcher@stacktwin.dev`
 
 Set `NEXT_PUBLIC_STACKTWIN_DEMO_USERS` before `npm run build` to replace that list. It accepts either a JSON array of `{ id, label, description }` objects or a comma-separated `id|label|description` list. The active learner persists in `localStorage` for the browser session.
 
@@ -80,6 +80,14 @@ Production-like development runs use a finite Nebius Serverless AI Job instead
 of an always-on model endpoint. Each Job starts local vLLM, waits for the model,
 runs the complete weekly pipeline for one learner, persists its results to Nebius
 Object Storage, terminates vLLM, and exits. GPU billing ends with the Job.
+
+### Weekly shared-content prefetch
+
+On the first authenticated app visit after a new Monday UTC boundary, the API
+claims a durable S3 lease and starts one Nebius prefetch Job. Other visitors see
+the preparation state and wait for the same shared content/tag snapshot. Later
+profile runs reuse that pool and only perform profile-specific scoring, digest
+generation, and lesson creation.
 
 Create a Nebius Container Registry once, configure its Docker credential helper,
 then build and push the Job image:
@@ -99,30 +107,28 @@ docker push cr.eu-north1.nebius.cloud/<registry-path>/stacktwin-job:dev
 Configure `.env` with the image, subnet, model, and Object Storage credentials:
 
 ```bash
-STACKTWIN_PIPELINE_EXECUTION=nebius_job
+STACKTWIN_APP_MODE=cloud
 STACKTWIN_JOB_IMAGE=cr.eu-north1.nebius.cloud/e00wkter9vcdmapban/stacktwin-job@sha256:9a219ea40337cca143becbd6e3d9bf48b28c2ccbc4ebc7bfb550af87f689b0d3
 STACKTWIN_JOB_SUBNET_ID=<subnet-id>
 STACKTWIN_JOB_ENV_FILE=.env
-NEBIUS_MODEL_MODE=test
 NEBIUS_MODEL_TEST=Qwen/Qwen3-0.6B
 NEBIUS_MODEL_MAP=NousResearch/Hermes-4-70B
 NEBIUS_MODEL_RED=Qwen/Qwen3-235B-A22B-Thinking-2507
-STORAGE_BACKEND=nebius
 ```
 
 The published digest pins the tested amd64 image used by this branch. Developers
 do not need to build or push an image for ordinary Job testing. Rebuild and push
 only when changing the Job container or backend code, then update the digest.
 
-`NEBIUS_MODEL_MODE=test` forces `NEBIUS_MODEL_TEST` for every LLM adapter:
-profile preparation, tag normalization, scoring, summaries, explanations, and
-quizzes. This guarantees that plumbing tests load only the small Qwen model.
+`STACKTWIN_APP_MODE=local` uses `NEBIUS_MODEL_TEST` for every LLM call and
+keeps profiles, tracks, and newly fetched weekly content in local JSON files.
+If this week's local shared content is absent, StackTwin restores it from Nebius
+Object Storage when credentials are configured before fetching anything new.
 
-Production routing is prepared but deliberately not enabled in the single-model
-Job. In `prod` mode, map/preparation adapters resolve `NEBIUS_MODEL_MAP` and
-reduce/generation adapters resolve `NEBIUS_MODEL_RED`. Those models require
-different, substantially larger GPU presets, so production execution will split
-them into separate Job phases rather than loading both into the test Job.
+`STACKTWIN_APP_MODE=cloud` stores every artifact in Object Storage. Each
+pipeline trigger submits one finite Nebius Job: Hermes performs tagging and
+scoring, checkpointing its results to S3; Qwen then generates the digest and
+learning track from that checkpoint; the Job exits.
 
 The API process needs the Nebius CLI installed and authenticated. A pipeline
 trigger submits the Job and returns `202 Accepted` with its ID:
@@ -137,8 +143,8 @@ For development, the launcher injects the configured local `.env` as a read-only
 Job file. Never commit that file. Production should replace file injection with
 MysteryBox-backed `--env-secret` values.
 
-Do not use the production models for Job plumbing tests. Resize the GPU presets
-and implement separate map/reduce phases before setting `NEBIUS_MODEL_MODE=prod`.
+Use local mode for Job plumbing tests. Cloud mode needs GPU presets sized for
+both finite model phases.
 
 Two environment variables control how much work the pipeline does each week:
 
@@ -164,7 +170,7 @@ Local development uses JSON files by default. Production can use Nebius Object S
 
 1. Copy `.env.example` to `.env` and create a Nebius Object Storage bucket plus a service-account access key.
 2. Populate the `NEBIUS_S3_*` values.
-3. Set `STORAGE_BACKEND=nebius`.
+3. Set `STACKTWIN_APP_MODE=cloud`.
 4. Build and serve the unified app with the commands in the Development section.
 
 Profiles and weekly tracks retain identical API behavior in either backend. Uploaded CV bytes are SHA-256 hashed; an identical re-upload returns the stored profile without another model extraction. Digest generation checks the user and Monday week key first; retries return the completed track instead of running ingestion, scoring, and generation again.

@@ -4,14 +4,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppNav } from "../components/AppNav";
 
 const pathname = vi.fn(() => "/");
+const push = vi.fn();
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => pathname()
+  usePathname: () => pathname(),
+  useRouter: () => ({ push })
 }));
 
 beforeEach(() => {
   localStorage.clear();
   pathname.mockReturnValue("/");
+  push.mockClear();
 });
 
 afterEach(() => {
@@ -25,16 +28,22 @@ describe("AppNav learner switcher", () => {
     render(<AppNav />);
 
     const switcher = screen.getByLabelText(/switch active learner/i);
-    expect(switcher).toHaveValue("demo@stacktwin.dev");
+    expect(switcher).toHaveValue("engineer@stacktwin.dev");
 
-    await user.selectOptions(switcher, "john@company.com");
+    await user.selectOptions(switcher, "researcher@stacktwin.dev");
 
-    expect(switcher).toHaveValue("john@company.com");
-    expect(localStorage.getItem("stacktwin.active-user-id")).toBe("john@company.com");
+    expect(switcher).toHaveValue("researcher@stacktwin.dev");
+    expect(localStorage.getItem("stacktwin.active-user-id")).toBe("researcher@stacktwin.dev");
 
     cleanup();
     render(<AppNav />);
 
-    expect(screen.getByLabelText(/switch active learner/i)).toHaveValue("john@company.com");
+    expect(screen.getByLabelText(/switch active learner/i)).toHaveValue("researcher@stacktwin.dev");
+    expect(screen.getByRole("option", { name: /new profile/i })).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText(/switch active learner/i), "__new_profile__");
+
+    expect(push).toHaveBeenCalledWith("/onboarding/?start=new");
+    expect(localStorage.getItem("stacktwin.active-user-id")).toMatch(/^profile-.+@stacktwin\.local$/);
   });
 });

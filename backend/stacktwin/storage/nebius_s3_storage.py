@@ -1,3 +1,5 @@
+import os
+from datetime import UTC, datetime
 from urllib.parse import quote
 
 import orjson
@@ -6,6 +8,8 @@ from stacktwin.learning.schema import WeeklyTrack
 from stacktwin.pipeline.run import PipelineRun
 from stacktwin.profile.schema import DeveloperProfile, WeeklyDigest
 from stacktwin.storage.base import StorageBackend
+
+PREFETCH_LEASE_SECONDS = int(os.getenv("STACKTWIN_PREFETCH_LEASE_SECONDS", "1800"))
 
 
 class NebiusS3Storage(StorageBackend):
@@ -71,6 +75,12 @@ class NebiusS3Storage(StorageBackend):
     def _run_key(self, user_id: str, run: PipelineRun) -> str:
         # created_at first so lexicographic key sort matches chronological order.
         return self._key(f"runs/{self._user_key(user_id)}/{run.created_at}_{run.run_id}.json")
+
+    def _content_snapshot_key(self, week_start: str) -> str:
+        return self._key(f"content/{week_start}.json")
+
+    def _content_lease_key(self, week_start: str) -> str:
+        return self._key(f"content/{week_start}/prefetch.json")
 
     def _put_json(self, key: str, data: dict) -> None:
         self.client.put_object(
@@ -285,6 +295,100 @@ class NebiusS3Storage(StorageBackend):
                 f"[storage] cleared {len(keys_to_delete)} scored checkpoint objects for "
                 f"{user_id}/{week_start}"
             )
+
+    def save_content_snapshot(
+        self, week_start: str, articles: list[dict], tag_index: dict[str, list[str]] | None
+    ) -> str:
+        key = self._content_snapshot_key(week_start)
+        self._put_json(
+            key,
+            {"week_start": week_start, "articles": articles, "tag_index": tag_index},
+        )
+        return f"s3://{self.bucket}/{key}"
+
+    def load_content_snapshot(self, week_start: str) -> dict | None:
+        return self._get_json(self._content_snapshot_key(week_start))
+
+    def acquire_content_prefetch_lease(self, week_start: str, owner_id: str) -> bool:
+        key = self._content_lease_key(week_start)
+        payload = self._new_content_lease(owner_id)
+        try:
+            self.client.put_object(
+                Bucket=self.bucket,
+                Key=key,
+                Body=orjson.dumps(payload),
+                ContentType="application/json",
+                IfNoneMatch="*",
+            )
+            return True
+        except Exception as error:
+            code = getattr(error, "response", {}).get("Error", {}).get("Code")
+            if code not in {"PreconditionFailed", "412"}:
+                raise
+
+        response = self.client.get_object(Bucket=self.bucket, Key=key)
+        lease = orjson.loads(response["Body"].read())
+        if not self._can_reclaim_content_lease(lease):
+            return False
+        try:
+            self.client.put_object(
+                Bucket=self.bucket,
+                Key=key,
+                Body=orjson.dumps(payload),
+                ContentType="application/json",
+                IfMatch=response["ETag"],
+            )
+            return True
+        except Exception as error:
+            code = getattr(error, "response", {}).get("Error", {}).get("Code")
+            if code in {"PreconditionFailed", "412"}:
+                return False
+            raise
+
+    def load_content_prefetch_lease(self, week_start: str) -> dict | None:
+        return self._get_json(self._content_lease_key(week_start))
+
+    def complete_content_prefetch_lease(self, week_start: str, owner_id: str) -> None:
+        self._write_content_lease(week_start, owner_id, "ready")
+
+    def fail_content_prefetch_lease(self, week_start: str, owner_id: str, reason: str) -> None:
+        self._write_content_lease(week_start, owner_id, "failed", reason)
+
+    def _write_content_lease(
+        self, week_start: str, owner_id: str, status: str, reason: str | None = None
+    ) -> None:
+        lease = self.load_content_prefetch_lease(week_start)
+        if not lease or lease.get("owner_id") != owner_id:
+            return
+        payload = {
+            "owner_id": owner_id,
+            "status": status,
+            "started_at": lease.get("started_at", datetime.now(UTC).isoformat()),
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
+        if reason:
+            payload["reason"] = reason[:300]
+        self._put_json(self._content_lease_key(week_start), payload)
+
+    @staticmethod
+    def _new_content_lease(owner_id: str) -> dict[str, str]:
+        now = datetime.now(UTC).isoformat()
+        return {"owner_id": owner_id, "status": "running", "started_at": now, "updated_at": now}
+
+    @staticmethod
+    def _can_reclaim_content_lease(lease: dict | None) -> bool:
+        if not lease or lease.get("status") == "failed":
+            return True
+        if lease.get("status") != "running":
+            return False
+        timestamp = lease.get("updated_at") or lease.get("started_at")
+        if not isinstance(timestamp, str):
+            return True
+        try:
+            updated_at = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            return True
+        return (datetime.now(UTC) - updated_at).total_seconds() >= PREFETCH_LEASE_SECONDS
 
     def _find_run_key(self, user_id: str, run_id: str) -> str | None:
         for key in self._run_keys(user_id):

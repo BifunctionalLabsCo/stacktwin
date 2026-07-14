@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, CheckCircle2, FileText, RotateCcw, Sparkles, UploadCloud } from "lucide-react";
+import { AlertCircle, CheckCircle2, FileText, Palette, RotateCcw, Search, Sparkles, UploadCloud, Wrench } from "lucide-react";
 import {
   buildQuickStartProfile,
   clearOnboardingFlowState,
+  createNewProfile,
   createQuickStartProfileDraft,
   emptyProfile,
   loadOnboardingFlowState,
   pollLatestRun,
+  PROFILE_PRESETS,
   saveManualProfile,
   saveOnboardingFlowState,
   triggerGeneration,
@@ -28,6 +30,7 @@ type Step =
   | { name: "choose" }
   | { name: "quick"; draft: QuickStartProfileDraft }
   | { name: "uploading"; progress: number }
+  | { name: "processing" }
   | { name: "review"; profile: DeveloperProfile; isUnchanged: boolean }
   | { name: "generating" }
   | { name: "failed"; message: string }
@@ -44,7 +47,7 @@ export function OnboardingFlow({
 }: {
   initialProfile?: DeveloperProfile | null;
   mode?: "onboarding" | "settings";
-  startMode?: "choose" | "quick";
+  startMode?: "choose" | "quick" | "new";
 }) {
   const router = useRouter();
   const userId = useActiveClassroomUserId();
@@ -62,7 +65,7 @@ export function OnboardingFlow({
   }, [initialProfile, startMode, userId]);
 
   useEffect(() => {
-    if (startMode !== "quick" && !initialProfile) {
+    if (startMode === "choose" && !initialProfile) {
       return;
     }
     if (step.name === "quick") {
@@ -97,7 +100,7 @@ export function OnboardingFlow({
       setStep((current) =>
         current.name === "uploading" ? { name: "uploading", progress: percent } : current
       );
-    }, userId).then((outcome) => {
+    }, () => setStep({ name: "processing" }), userId).then((outcome) => {
       if (outcome.status === "invalid_file" || outcome.status === "extraction_failed" || outcome.status === "network_error") {
         setStep({ name: "error", kind: outcome.status, message: outcome.message });
         return;
@@ -219,15 +222,48 @@ export function OnboardingFlow({
     return (
       <main className="onboardingShell">
         <OnboardingHeader />
-        <section className="onboardingChoices" aria-label="Start onboarding">
+        <section className="profilePresetSection" aria-labelledby="profile-presets-heading">
+          <div className="sectionIntro">
+            <p className="eyebrow">Choose a starting point</p>
+            <h2 id="profile-presets-heading">Bootstrap a learning profile</h2>
+            <p>Pick the profile that best matches how you learn today. You can edit every detail before saving.</p>
+          </div>
+          <div className="profilePresetGrid">
+            {PROFILE_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className="profilePresetCard"
+                onClick={() => setStep({ name: "quick", draft: createQuickStartProfileDraft(userId, preset.id) })}
+              >
+                <PresetIcon preset={preset.id} />
+                <span className="profilePresetLabel">{preset.label}</span>
+                <span className="profilePresetDescription">{preset.description}</span>
+                <span className="profilePresetAction">Quick bootstrap <span aria-hidden="true">→</span></span>
+              </button>
+            ))}
+            <button
+              type="button"
+              className="profilePresetCard isNew"
+              onClick={() => setStep({ name: "review", profile: emptyProfile(), isUnchanged: false })}
+            >
+              <FileText size={24} />
+              <span className="profilePresetLabel">New Profile</span>
+              <span className="profilePresetDescription">Start from a blank profile and shape it yourself.</span>
+              <span className="profilePresetAction">Create from scratch <span aria-hidden="true">→</span></span>
+            </button>
+          </div>
+        </section>
+        <p className="onboardingDivider">Or build one from an existing source</p>
+        <section className="onboardingChoices" aria-label="Other profile setup options">
           <button
             type="button"
             className="onboardingCard"
             onClick={() => setStep({ name: "quick", draft: createQuickStartProfileDraft(userId) })}
           >
             <Sparkles size={28} />
-            <h2>Quick start</h2>
-            <p>Seed a compact profile with the minimum details needed to launch a good first week.</p>
+            <h2>Quick start editor</h2>
+            <p>Use a compact form when you want to customize a profile before saving it.</p>
           </button>
           <button
             type="button"
@@ -342,24 +378,6 @@ export function OnboardingFlow({
                 onChange={(event) => updateQuickDraft("weekly_time_budget_hours", event.target.value)}
               />
             </label>
-            <label htmlFor="quick-format">
-              <span>Preferred format</span>
-              <select
-                id="quick-format"
-                value={step.draft.preferred_format}
-                onChange={(event) =>
-                  updateQuickDraft("preferred_format", event.target.value as QuickStartProfileDraft["preferred_format"])
-                }
-              >
-                <option value="">Default</option>
-                <option value="short_summary">Short summary</option>
-                <option value="hands_on">Hands-on</option>
-                <option value="deep_dive">Deep dive</option>
-                <option value="quiz">Quiz</option>
-                <option value="video">Video</option>
-                <option value="podcast">Podcast</option>
-              </select>
-            </label>
           </div>
           <div className="quickStartActions">
             <button
@@ -386,7 +404,22 @@ export function OnboardingFlow({
           <UploadCloud size={20} />
           <div>
             <h2>Uploading your CV</h2>
-            <p>{step.progress}% uploaded. Extracting your profile next.</p>
+            <p>{step.progress}% uploaded. We will read and structure it next.</p>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (step.name === "processing") {
+    return (
+      <main className="onboardingShell">
+        <OnboardingHeader />
+        <section className="statePanel" aria-live="polite">
+          <Search size={20} />
+          <div>
+            <h2>Reading your CV</h2>
+            <p>Extracting the useful signals and preparing your learning profile.</p>
           </div>
         </section>
       </main>
@@ -416,7 +449,7 @@ export function OnboardingFlow({
       <main className="onboardingShell">
         <OnboardingHeader />
         <p className="privacyNote">
-          Your role, stack, learning goals, time budget, and format preferences shape which
+          Your role, stack, learning goals, and time budget shape which
           weekly modules get generated. We do not keep your raw CV text beyond this session.
         </p>
         <ProfileReviewForm
@@ -466,6 +499,16 @@ export function OnboardingFlow({
   );
 }
 
+function PresetIcon({ preset }: { preset: "engineer" | "creator" | "researcher" }) {
+  if (preset === "creator") {
+    return <Palette size={24} />;
+  }
+  if (preset === "researcher") {
+    return <Search size={24} />;
+  }
+  return <Wrench size={24} />;
+}
+
 function OnboardingHeader() {
   return (
     <section className="header onboardingHeader">
@@ -485,7 +528,7 @@ function OnboardingHeader() {
 function resolveInitialStep(
   userId: string,
   initialProfile: DeveloperProfile | null,
-  startMode: "choose" | "quick"
+  startMode: "choose" | "quick" | "new"
 ): Step {
   if (initialProfile) {
     return { name: "review", profile: initialProfile, isUnchanged: true };
@@ -499,6 +542,10 @@ function resolveInitialStep(
     if (stored?.step === "review") {
       return { name: "review", profile: stored.profile, isUnchanged: false };
     }
+  }
+
+  if (startMode === "new") {
+    return { name: "review", profile: createNewProfile(userId), isUnchanged: false };
   }
 
   return startMode === "quick"

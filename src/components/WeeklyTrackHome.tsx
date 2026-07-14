@@ -22,6 +22,7 @@ import { applyCompletedProgress } from "../lib/progress";
 import { fetchProfileInfluence, type ProfileInfluence } from "../lib/classroom";
 import { useActiveClassroomUserId } from "../lib/classroom-user";
 import { ProfileInfluenceBand } from "./ProfileInfluenceBand";
+import { ensureWeeklyContent } from "../lib/weekly-content";
 
 const statusMeta = {
   ready: { label: "Ready", Icon: CheckCircle2 },
@@ -31,6 +32,8 @@ const statusMeta = {
   failed: { label: "Needs review", Icon: AlertCircle },
   stale: { label: "Update available", Icon: RotateCcw }
 };
+
+const CONTENT_POLL_INTERVAL_MS = 5_000;
 
 export function WeeklyTrackHome() {
   const router = useRouter();
@@ -43,20 +46,45 @@ export function WeeklyTrackHome() {
     setState({ status: "loading" });
     setProfile(null);
 
-    fetchWeeklyTrackState(userId).then((nextState) => {
-      if (!active) {
-        return;
-      }
-      if (nextState.status === "profile_required") {
-        router.replace("/onboarding/");
-        return;
-      }
-      setState(
-        nextState.status === "ready"
-          ? { status: "ready", track: applyCompletedProgress(nextState.track) }
-          : nextState
-      );
-    });
+    const loadTrack = () => {
+      fetchWeeklyTrackState(userId).then((nextState) => {
+        if (!active) {
+          return;
+        }
+        if (nextState.status === "profile_required") {
+          router.replace("/onboarding/?start=quick");
+          return;
+        }
+        setState(
+          nextState.status === "ready"
+            ? { status: "ready", track: applyCompletedProgress(nextState.track) }
+            : nextState
+        );
+      });
+    };
+
+    const waitForContent = () => {
+      ensureWeeklyContent().then((contentStatus) => {
+        if (!active) {
+          return;
+        }
+        if (contentStatus === "ready") {
+          loadTrack();
+          return;
+        }
+        if (contentStatus === "failed") {
+          setState({
+            status: "error",
+            message: "This week's content preparation failed. Refresh to retry."
+          });
+          return;
+        }
+        setState({ status: "preparing_content" });
+        window.setTimeout(waitForContent, CONTENT_POLL_INTERVAL_MS);
+      });
+    };
+
+    waitForContent();
     fetchProfileInfluence(userId).then((nextProfile) => {
       if (active) {
         setProfile(nextProfile);
@@ -68,15 +96,15 @@ export function WeeklyTrackHome() {
     };
   }, [router, userId]);
 
-  if (state.status === "loading") {
+  if (state.status === "loading" || state.status === "preparing_content") {
     return (
       <main className="shell">
         <HeaderShell />
         <section className="statePanel" aria-live="polite">
           <RotateCcw size={20} />
           <div>
-            <h2>Preparing this week's track</h2>
-            <p>StackTwin is collecting source signals and shaping the learning cards.</p>
+            <h2>{state.status === "preparing_content" ? "Preparing this week's content" : "Preparing this week's track"}</h2>
+            <p>{state.status === "preparing_content" ? "StackTwin is fetching and tagging this week's source pool. Check back in a moment." : "StackTwin is collecting source signals and shaping the learning cards."}</p>
           </div>
         </section>
         <LoadingGrid />

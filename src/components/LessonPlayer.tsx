@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, BookOpen, Check, Clock, ExternalLink } from "lucide-react";
-import { markModuleComplete } from "../lib/progress";
+import { getCompletedModuleIds, setModuleCompletion } from "../lib/progress";
 import { fetchLessonState, type LessonState } from "../lib/weekly-track";
 import { useActiveClassroomUserId } from "../lib/classroom-user";
 
@@ -18,11 +17,11 @@ export function LessonPlayer({
   weekStart?: string;
   demo?: boolean;
 }) {
-  const router = useRouter();
   const userId = useActiveClassroomUserId();
   const [state, setState] = useState<LessonState>({ status: "loading" });
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [answerChecked, setAnswerChecked] = useState(false);
+  const [completed, setCompleted] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -32,6 +31,9 @@ export function LessonPlayer({
     fetchLessonState(moduleId, weekStart, demo, userId).then((nextState) => {
       if (active) {
         setState(nextState);
+        if (nextState.status === "ready") {
+          setCompleted(getCompletedModuleIds(nextState.lesson.trackId).includes(nextState.lesson.id));
+        }
       }
     });
     return () => {
@@ -62,9 +64,10 @@ export function LessonPlayer({
   const { lesson } = state;
   const correct = selectedAnswer === lesson.checkpoint.answer;
 
-  function completeLesson() {
-    markModuleComplete(lesson.trackId, lesson.id);
-    router.push("/");
+  function toggleLessonCompletion() {
+    const nextCompleted = !completed;
+    setModuleCompletion(lesson.trackId, lesson.id, nextCompleted);
+    setCompleted(nextCompleted);
   }
 
   return (
@@ -136,8 +139,13 @@ export function LessonPlayer({
           </section>
 
           <div className="lessonFooterActions">
-            <button className="primaryAction" type="button" onClick={completeLesson}>
-              <Check size={18} /> Mark complete
+            <button
+              className={`primaryAction ${completed ? "isCompleted" : ""}`}
+              type="button"
+              aria-pressed={completed}
+              onClick={toggleLessonCompletion}
+            >
+              <Check size={18} /> {completed ? "Completed · Mark incomplete" : "Mark complete"}
             </button>
             {lesson.nextModuleId && (
               <Link

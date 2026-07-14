@@ -1,3 +1,4 @@
+import hmac
 import json
 import os
 import subprocess
@@ -6,13 +7,19 @@ import uuid
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from stacktwin.jobs.nebius import submit_weekly_pipeline_job
+from stacktwin.jobs.nebius import submit_weekly_content_prefetch_job, submit_weekly_pipeline_job
 from stacktwin.learning.builder import build_weekly_track
+from stacktwin.llm import app_mode
 from stacktwin.pipeline.digest import DIGEST_SIZE, build_digest
-from stacktwin.pipeline.ingest import SOURCE_LIMIT, load_or_build_tag_index, load_or_fetch
+from stacktwin.pipeline.ingest import (
+    SOURCE_LIMIT,
+    load_or_build_tag_index,
+    load_or_fetch,
+    prefetch_weekly_content,
+)
 from stacktwin.pipeline.run import (
     PipelineRun,
     RunStage,
@@ -22,7 +29,7 @@ from stacktwin.pipeline.run import (
 from stacktwin.pipeline.score import filter_by_tags, score_articles
 from stacktwin.pipeline.sources.base import Article
 from stacktwin.profile.schema import ArticleScore
-from stacktwin.storage.factory import get_storage
+from stacktwin.storage.factory import get_cloud_storage, get_storage
 
 router = APIRouter()
 
@@ -33,6 +40,88 @@ router = APIRouter()
 # execution.
 
 MAX_RUN_HISTORY = 20
+
+
+def _cloud_content_fallback():
+    if app_mode() != "local":
+        return None
+    try:
+        return get_cloud_storage()
+    except OSError:
+        return None
+
+
+@router.post("/prefetch")
+def prefetch_content(x_stacktwin_schedule_token: str | None = Header(default=None)):
+    """Refresh the shared weekly source pool; no learner scoring or lesson generation occurs."""
+    expected_token = os.getenv("STACKTWIN_SCHEDULE_TOKEN")
+    if not expected_token:
+        raise HTTPException(status_code=503, detail="Weekly prefetch is not configured.")
+    if not x_stacktwin_schedule_token or not hmac.compare_digest(
+        x_stacktwin_schedule_token, expected_token
+    ):
+        raise HTTPException(status_code=401, detail="Invalid schedule token.")
+
+    if app_mode() == "cloud":
+        try:
+            job = submit_weekly_content_prefetch_job(str(uuid.uuid4()))
+        except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
+            raise HTTPException(status_code=502, detail=sanitize_failure_summary(error)) from error
+        return JSONResponse(
+            status_code=202,
+            content={"status": "submitted", "job_id": job.job_id, "job_name": job.name},
+        )
+
+    try:
+        result = prefetch_weekly_content(
+            get_storage(), fallback_storage=_cloud_content_fallback()
+        )
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=sanitize_failure_summary(error)) from error
+    return JSONResponse(content={"status": "prefetched", **result})
+
+
+@router.post("/prefetch/ensure")
+def ensure_prefetched_content():
+    """Idempotently ensure shared weekly content is ready for an authenticated app visit."""
+    storage = get_storage()
+    today = datetime.now(UTC).date()
+    week_start = (today - timedelta(days=today.weekday())).isoformat()
+    snapshot = storage.load_content_snapshot(week_start)
+    if snapshot and snapshot.get("tag_index") is not None:
+        return {"status": "ready", "week_start": week_start}
+
+    fallback_storage = _cloud_content_fallback()
+    if fallback_storage is not None:
+        cloud_snapshot = fallback_storage.load_content_snapshot(week_start)
+        if cloud_snapshot and cloud_snapshot.get("tag_index") is not None:
+            storage.save_content_snapshot(
+                week_start, cloud_snapshot["articles"], cloud_snapshot["tag_index"]
+            )
+            return {"status": "ready", "week_start": week_start}
+
+    owner_id = str(uuid.uuid4())
+    if not storage.acquire_content_prefetch_lease(week_start, owner_id):
+        lease = storage.load_content_prefetch_lease(week_start) or {}
+        return {"status": lease.get("status", "pending"), "week_start": week_start}
+
+    if app_mode() == "cloud":
+        try:
+            job = submit_weekly_content_prefetch_job(owner_id)
+        except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
+            storage.fail_content_prefetch_lease(
+                week_start, owner_id, sanitize_failure_summary(error)
+            )
+            raise HTTPException(status_code=502, detail=sanitize_failure_summary(error)) from error
+        return {"status": "pending", "week_start": week_start, "job_id": job.job_id}
+
+    try:
+        result = prefetch_weekly_content(
+            storage, owner_id=owner_id, fallback_storage=fallback_storage
+        )
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=sanitize_failure_summary(error)) from error
+    return {"status": "ready", **result}
 
 
 def _log(run_id: str, stage: str, message: str) -> None:
@@ -54,16 +143,8 @@ def _transition(storage, run: PipelineRun, stage: RunStage, status: str | None =
 
 @router.post("/run")
 def run_pipeline(user_id: str = Query(..., description="User email address")):
-    """
-    Trigger the full pipeline for a specific user.
-    Uses today's article cache if available and skips re-fetching.
-
-    Every invocation creates or resolves to a durable PipelineRun record
-    (see stacktwin.pipeline.run.PipelineRun) keyed by (user_id, target_week).
-    The run record is persisted via the storage backend and returned to the
-    caller alongside the existing pipeline result fields.
-    """
-    if os.getenv("STACKTWIN_PIPELINE_EXECUTION", "local") == "nebius_job":
+    """Submit cloud work or run the complete local pipeline inline."""
+    if app_mode() == "cloud":
         try:
             job = submit_weekly_pipeline_job(user_id)
         except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
@@ -78,24 +159,55 @@ def run_pipeline(user_id: str = Query(..., description="User email address")):
                 "job_state": job.state,
             },
         )
+    return _run_pipeline(user_id)
 
+
+def _run_pipeline(
+    user_id: str,
+    stop_after_scoring: bool = False,
+    run_id: str | None = None,
+):
+    """
+    Trigger the full pipeline for a specific user.
+    Uses today's article cache if available and skips re-fetching.
+
+    Every invocation creates or resolves to a durable PipelineRun record
+    (see stacktwin.pipeline.run.PipelineRun) keyed by (user_id, target_week).
+    The run record is persisted via the storage backend and returned to the
+    caller alongside the existing pipeline result fields.
+    """
     storage = get_storage()
+    fallback_storage = _cloud_content_fallback()
     today = datetime.now(UTC).date()
     week_start = (today - timedelta(days=today.weekday())).isoformat()
 
-    run = PipelineRun(
-        run_id=str(uuid.uuid4()),
-        user_id=user_id,
-        target_week=week_start,
-        trigger_type="manual",
-        status="running",
-        current_stage="queued",
-        attempt_number=1,
-        created_at=_now(),
-        updated_at=_now(),
-    )
-    storage.save_run(run)
-    _log(run.run_id, run.current_stage, f"created for user={user_id} week={week_start}")
+    if run_id:
+        run = next(
+            (
+                candidate
+                for candidate in storage.load_run_history(user_id, limit=100)
+                if candidate.run_id == run_id
+            ),
+            None,
+        )
+        if not run:
+            raise RuntimeError(f"Pipeline run {run_id} was not found for {user_id}.")
+        run.status = "running"
+        _transition(storage, run, run.current_stage)
+    else:
+        run = PipelineRun(
+            run_id=str(uuid.uuid4()),
+            user_id=user_id,
+            target_week=week_start,
+            trigger_type="manual",
+            status="running",
+            current_stage="queued",
+            attempt_number=1,
+            created_at=_now(),
+            updated_at=_now(),
+        )
+        storage.save_run(run)
+        _log(run.run_id, run.current_stage, f"created for user={user_id} week={week_start}")
 
     try:
         existing_digest = storage.load_digest_by_week(user_id, week_start)
@@ -148,7 +260,12 @@ def run_pipeline(user_id: str = Query(..., description="User email address")):
 
         _transition(storage, run, "ingesting")
         ingest_started = time.monotonic()
-        articles = load_or_fetch(limit_per_source=SOURCE_LIMIT)
+        articles = load_or_fetch(
+            limit_per_source=SOURCE_LIMIT,
+            storage=storage,
+            week_start=week_start,
+            fallback_storage=fallback_storage,
+        )
         ingest_duration_ms = int((time.monotonic() - ingest_started) * 1000)
         run.sources = _summarize_sources(articles, ingest_duration_ms)
         storage.save_run(run)
@@ -163,7 +280,12 @@ def run_pipeline(user_id: str = Query(..., description="User email address")):
                 run.run_id, "scoring", f"checkpoint: {len(already_scored)} articles already scored"
             )
 
-        tag_index = load_or_build_tag_index(articles)
+        tag_index = load_or_build_tag_index(
+            articles,
+            storage=storage,
+            week_start=week_start,
+            fallback_storage=fallback_storage,
+        )
         filtered = filter_by_tags(articles, profile, tag_index)
 
         def _persist_scored(article: Article, score: ArticleScore) -> None:
@@ -183,6 +305,18 @@ def run_pipeline(user_id: str = Query(..., description="User email address")):
             already_scored=already_scored,
             on_scored=_persist_scored,
         )
+
+        if stop_after_scoring:
+            _transition(storage, run, "scoring")
+            return JSONResponse(
+                content={
+                    "status": "scored",
+                    "user_id": user_id,
+                    "week_start": week_start,
+                    "total_processed": len(scored),
+                    "run": run.model_dump(mode="json"),
+                }
+            )
 
         _transition(storage, run, "generating")
         digest = build_digest(scored, profile, top_n=DIGEST_SIZE, week_start=week_start)

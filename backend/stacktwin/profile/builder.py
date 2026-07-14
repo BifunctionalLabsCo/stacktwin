@@ -29,8 +29,7 @@ Return ONLY a valid JSON object with these exact fields:
   "learning_goals": list of strings,
   "topics_to_track": list of strings,
   "topics_to_avoid": list of strings,
-  "weekly_time_budget_hours": float,
-  "preferred_formats": list of ["short_summary","hands_on","deep_dive","quiz","video","podcast"]
+  "weekly_time_budget_hours": float
 }
 
 Rules:
@@ -79,9 +78,10 @@ def build_profile_from_text(raw_text: str, source: str = "cv") -> DeveloperProfi
         )
         response.raise_for_status()
     except httpx.HTTPStatusError as e:
-        raise ConnectionError(f"Nebius API error {e.response.status_code}: {e.response.text}")
-    except httpx.TimeoutException:
-        raise ConnectionError("Nebius API timed out after 30 seconds")
+        message = f"Nebius API error {e.response.status_code}: {e.response.text}"
+        raise ConnectionError(message) from e
+    except httpx.TimeoutException as e:
+        raise ConnectionError("Nebius API timed out after 30 seconds") from e
 
     raw_json = response.json()["choices"][0]["message"]["content"].strip()
 
@@ -101,13 +101,12 @@ def build_profile_from_text(raw_text: str, source: str = "cv") -> DeveloperProfi
             "learning_goals",
             "topics_to_track",
             "topics_to_avoid",
-            "preferred_formats",
         ]
         for field in list_fields:
             if data.get(field) is None:
                 data[field] = []
-    except json.JSONDecodeError:
-        raise ValueError(f"Nebius returned invalid JSON:\n{raw_json}")
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Nebius returned invalid JSON:\n{raw_json}") from e
 
     data["profile_source"] = source
     data["raw_text"] = raw_text[:500]

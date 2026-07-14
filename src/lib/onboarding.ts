@@ -1,6 +1,6 @@
 import { getClassroomUserId } from "./config";
 import { getClassroomUserLabel } from "./classroom-user";
-import type { ContentFormatValue, DeveloperProfile, ExperienceLevelValue } from "./profile-types";
+import type { DeveloperProfile, ExperienceLevelValue } from "./profile-types";
 
 export const MAX_CV_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 export const ACCEPTED_CV_TYPES = [".pdf", ".txt"];
@@ -31,6 +31,7 @@ export function validateCvFile(file: File): string | null {
 export function uploadCv(
   file: File,
   onProgress?: (percent: number) => void,
+  onProcessing?: () => void,
   userId = getClassroomUserId()
 ): Promise<UploadOutcome> {
   return new Promise((resolve) => {
@@ -48,6 +49,7 @@ export function uploadCv(
         onProgress(Math.round((event.loaded / event.total) * 100));
       }
     };
+    request.upload.onload = () => onProcessing?.();
 
     request.onload = () => {
       let payload: Record<string, unknown> = {};
@@ -218,7 +220,6 @@ export type QuickStartProfileDraft = {
   learning_goals: string;
   career_direction: string;
   weekly_time_budget_hours: string;
-  preferred_format: ContentFormatValue | "";
 };
 
 export type ProfilePreset = "engineer" | "creator" | "researcher";
@@ -251,24 +252,21 @@ const PROFILE_PRESET_DRAFTS: Record<ProfilePreset, Omit<QuickStartProfileDraft, 
     current_stack: "FastAPI, Supabase, React",
     learning_goals: "Build and ship full-stack products with FastAPI, Supabase, and React",
     career_direction: "Ship faster with pragmatic full-stack architecture",
-    weekly_time_budget_hours: "3",
-    preferred_format: "hands_on"
+    weekly_time_budget_hours: "3"
   },
   creator: {
     current_role: "AI Content Creator",
     current_stack: "Claude, ChatGPT, n8n, Zapier",
     learning_goals: "Use new AI tools and automation workflows to create and distribute better content",
     career_direction: "Build a high-leverage creative practice with AI automations",
-    weekly_time_budget_hours: "3",
-    preferred_format: "hands_on"
+    weekly_time_budget_hours: "3"
   },
   researcher: {
     current_role: "AI Researcher",
     current_stack: "PyTorch, Hugging Face, JAX",
     learning_goals: "Stay current on state-of-the-art AI research, fine-tuning, and deep learning",
     career_direction: "Develop research judgment and apply frontier AI work responsibly",
-    weekly_time_budget_hours: "5",
-    preferred_format: "deep_dive"
+    weekly_time_budget_hours: "5"
   }
 };
 
@@ -329,14 +327,14 @@ export function loadOnboardingFlowState(userId = getClassroomUserId()): Persiste
 
 export function saveOnboardingFlowState(
   userId: string,
-  step: PersistedOnboardingFlow | "choose" | "uploading" | "generating" | "failed" | "error"
+  step: PersistedOnboardingFlow | "choose" | "uploading" | "processing" | "generating" | "failed" | "error"
 ) {
   if (typeof window === "undefined") {
     return;
   }
 
   try {
-    if (step === "choose" || step === "uploading" || step === "generating" || step === "failed" || step === "error") {
+    if (step === "choose" || step === "uploading" || step === "processing" || step === "generating" || step === "failed" || step === "error") {
       window.localStorage.removeItem(onboardingStateKey(userId));
       return;
     }
@@ -389,18 +387,10 @@ export function buildQuickStartProfile(
     topics_to_track: stack.length > 0 ? stack.slice(0, 3) : ["frontend", "product design", "AI workflows"],
     topics_to_avoid: [],
     weekly_time_budget_hours: parseBudgetHours(draft.weekly_time_budget_hours),
-    preferred_formats: draft.preferred_format ? [draft.preferred_format] : ["hands_on", "short_summary"],
+    preferred_formats: [],
     profile_source: "manual",
     raw_text: null
   };
 }
 
 export const EXPERIENCE_LEVELS: ExperienceLevelValue[] = ["junior", "mid", "senior", "staff"];
-export const CONTENT_FORMATS: ContentFormatValue[] = [
-  "short_summary",
-  "hands_on",
-  "deep_dive",
-  "quiz",
-  "video",
-  "podcast"
-];

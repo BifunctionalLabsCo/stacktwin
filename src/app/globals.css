@@ -905,6 +905,10 @@ h1 {
   background: color-mix(in srgb, var(--accent) 88%, var(--ink));
 }
 
+.primaryAction.isCompleted {
+  background: var(--success, #138a5b);
+}
+
 .primaryAction:active:not(:disabled),
 .secondaryAction:active:not(:disabled) {
   transform: scale(0.985);

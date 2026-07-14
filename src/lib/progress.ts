@@ -22,10 +22,18 @@ export function getCompletedModuleIds(trackId: string): string[] {
 }
 
 export function markModuleComplete(trackId: string, moduleId: string) {
+  setModuleCompletion(trackId, moduleId, true);
+}
+
+export function setModuleCompletion(trackId: string, moduleId: string, completed: boolean) {
   const stored = readProgress();
-  const completed = new Set(getCompletedModuleIds(trackId));
-  completed.add(moduleId);
-  stored[trackId] = [...completed];
+  const moduleIds = new Set(getCompletedModuleIds(trackId));
+  if (completed) {
+    moduleIds.add(moduleId);
+  } else {
+    moduleIds.delete(moduleId);
+  }
+  stored[trackId] = [...moduleIds];
   localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
   window.dispatchEvent(new Event("stacktwin-progress"));
 }

@@ -103,7 +103,7 @@ describe("OnboardingFlow quick start path", () => {
         const body = JSON.parse(init?.body as string) as Record<string, unknown>;
         expect(body.current_role).toBe("Full-stack Engineer");
         expect(body.current_stack).toEqual(["FastAPI", "Supabase", "React"]);
-        expect(body.preferred_formats).toEqual(["hands_on"]);
+        expect(body.preferred_formats).toEqual([]);
         return jsonResponse({ status: "ok", user_id: "demo", profile: body });
       }
       if (url.includes("/api/digest/runs/latest")) {
@@ -119,6 +119,7 @@ describe("OnboardingFlow quick start path", () => {
     render(<OnboardingFlow startMode="quick" />);
 
     expect(await screen.findByLabelText(/quick start profile/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/preferred format/i)).not.toBeInTheDocument();
 
     await user.clear(screen.getByLabelText(/^name$/i));
     await user.type(screen.getByLabelText(/^name$/i), "Ada Lovelace");

@@ -30,6 +30,7 @@ type Step =
   | { name: "choose" }
   | { name: "quick"; draft: QuickStartProfileDraft }
   | { name: "uploading"; progress: number }
+  | { name: "processing" }
   | { name: "review"; profile: DeveloperProfile; isUnchanged: boolean }
   | { name: "generating" }
   | { name: "failed"; message: string }
@@ -99,7 +100,7 @@ export function OnboardingFlow({
       setStep((current) =>
         current.name === "uploading" ? { name: "uploading", progress: percent } : current
       );
-    }, userId).then((outcome) => {
+    }, () => setStep({ name: "processing" }), userId).then((outcome) => {
       if (outcome.status === "invalid_file" || outcome.status === "extraction_failed" || outcome.status === "network_error") {
         setStep({ name: "error", kind: outcome.status, message: outcome.message });
         return;
@@ -377,24 +378,6 @@ export function OnboardingFlow({
                 onChange={(event) => updateQuickDraft("weekly_time_budget_hours", event.target.value)}
               />
             </label>
-            <label htmlFor="quick-format">
-              <span>Preferred format</span>
-              <select
-                id="quick-format"
-                value={step.draft.preferred_format}
-                onChange={(event) =>
-                  updateQuickDraft("preferred_format", event.target.value as QuickStartProfileDraft["preferred_format"])
-                }
-              >
-                <option value="">Default</option>
-                <option value="short_summary">Short summary</option>
-                <option value="hands_on">Hands-on</option>
-                <option value="deep_dive">Deep dive</option>
-                <option value="quiz">Quiz</option>
-                <option value="video">Video</option>
-                <option value="podcast">Podcast</option>
-              </select>
-            </label>
           </div>
           <div className="quickStartActions">
             <button
@@ -421,7 +404,22 @@ export function OnboardingFlow({
           <UploadCloud size={20} />
           <div>
             <h2>Uploading your CV</h2>
-            <p>{step.progress}% uploaded. Extracting your profile next.</p>
+            <p>{step.progress}% uploaded. We will read and structure it next.</p>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (step.name === "processing") {
+    return (
+      <main className="onboardingShell">
+        <OnboardingHeader />
+        <section className="statePanel" aria-live="polite">
+          <Search size={20} />
+          <div>
+            <h2>Reading your CV</h2>
+            <p>Extracting the useful signals and preparing your learning profile.</p>
           </div>
         </section>
       </main>
@@ -451,7 +449,7 @@ export function OnboardingFlow({
       <main className="onboardingShell">
         <OnboardingHeader />
         <p className="privacyNote">
-          Your role, stack, learning goals, time budget, and format preferences shape which
+          Your role, stack, learning goals, and time budget shape which
           weekly modules get generated. We do not keep your raw CV text beyond this session.
         </p>
         <ProfileReviewForm

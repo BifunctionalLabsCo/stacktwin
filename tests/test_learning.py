@@ -1,4 +1,4 @@
-from stacktwin.learning.builder import build_weekly_track
+from stacktwin.learning.builder import _first_sentence, build_weekly_track
 from stacktwin.profile.schema import DeveloperProfile
 
 from tests.test_storage import _digest
@@ -45,3 +45,11 @@ def test_digest_quiz_answer_is_resolved_to_option_text():
     track = build_weekly_track(digest, DeveloperProfile())
 
     assert track.modules[0].checkpoint.answer == "B) Second"
+
+
+def test_key_concepts_preserve_periods_inside_technology_names():
+    connection = "This applies to your React, TypeScript, and Next.js stack. Start small."
+
+    assert _first_sentence(connection) == (
+        "This applies to your React, TypeScript, and Next.js stack"
+    )

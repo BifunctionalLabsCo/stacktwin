@@ -39,7 +39,7 @@ export function AppNav() {
           href="/profile/"
           aria-current={pathname.startsWith("/profile") ? "page" : undefined}
         >
-          <UserCircle size={16} /> Profile
+          <UserCircle size={16} /> Configure Twin
         </Link>
       </nav>
       <div className="appNavActions">
@@ -63,7 +63,7 @@ export function AppNav() {
                 {user.label}
               </option>
             ))}
-            <option value={NEW_PROFILE_OPTION}>+ New Profile</option>
+            <option value={NEW_PROFILE_OPTION}>+ New Twin</option>
           </select>
         </label>
         <ThemeToggle />

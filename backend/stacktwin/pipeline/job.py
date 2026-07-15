@@ -17,27 +17,53 @@ def main() -> int:
     command.add_argument("--user-id")
     command.add_argument("--prefetch-weekly-content", action="store_true")
     parser.add_argument("--prefetch-owner")
+    parser.add_argument("--week-start", help="ISO Monday to backfill; defaults to the current week")
     args = parser.parse_args()
 
-    load_dotenv(os.getenv("STACKTWIN_JOB_ENV_PATH", "/run/secrets/stacktwin.env"))
-    if app_mode() != "cloud":
-        raise RuntimeError("Nebius Jobs require STACKTWIN_APP_MODE=cloud")
+    # The injected app configuration selects storage behavior and finite-job
+    # sizing, so it must override image defaults.
+    load_dotenv(os.getenv("STACKTWIN_JOB_ENV_PATH", "/run/secrets/stacktwin.env"), override=True)
+    requested_model_mode = app_mode()
+    tensor_parallel_size = _tensor_parallel_size(requested_model_mode)
+    # Jobs always use S3 so the app can observe durable state. Preserve the
+    # caller mode only for its one-GPU resource overrides; every phase uses Qwen.
+    os.environ["STACKTWIN_APP_MODE"] = "cloud"
+    os.environ["STACKTWIN_MODEL_MODE"] = requested_model_mode
     port = int(os.getenv("STACKTWIN_JOB_VLLM_PORT", "8000"))
     base_url = f"http://127.0.0.1:{port}"
 
     os.environ["NEBIUS_API_URL"] = f"{base_url}/v1"
     os.environ["NEBIUS_API_KEY"] = "stacktwin-local-job"
     os.environ["NEBIUS_TOKEN"] = "stacktwin-local-job"
+    os.environ["STACKTWIN_PIPELINE_LLM_ACTIVE"] = "true"
     if args.prefetch_weekly_content:
-        _run_model_phase(model_for("map"), port, base_url, _prefetch(args.prefetch_owner))
+        _run_model_phase(
+            model_for("map"),
+            port,
+            base_url,
+            _prefetch(args.prefetch_owner, args.week_start),
+            tensor_parallel_size,
+        )
         return 0
 
-    run_id = _run_model_phase(model_for("map"), port, base_url, _score(args.user_id))
-    _run_model_phase(model_for("reduce"), port, base_url, _generate(args.user_id, run_id))
+    run_id = _run_model_phase(
+        model_for("map"),
+        port,
+        base_url,
+        _score(args.user_id, args.week_start),
+        tensor_parallel_size,
+    )
+    _run_model_phase(
+        model_for("reduce"),
+        port,
+        base_url,
+        _generate(args.user_id, run_id, args.week_start),
+        tensor_parallel_size,
+    )
     return 0
 
 
-def _run_model_phase(model: str, port: int, base_url: str, work):
+def _run_model_phase(model: str, port: int, base_url: str, work, tensor_parallel_size: int):
     server = subprocess.Popen(
         [
             sys.executable,
@@ -50,7 +76,9 @@ def _run_model_phase(model: str, port: int, base_url: str, work):
             "--port",
             str(port),
             "--max-model-len",
-            os.getenv("STACKTWIN_JOB_MAX_MODEL_LEN", "4096"),
+            os.getenv("STACKTWIN_JOB_MAX_MODEL_LEN", "8192"),
+            "--tensor-parallel-size",
+            str(tensor_parallel_size),
         ]
     )
     try:
@@ -64,32 +92,49 @@ def _run_model_phase(model: str, port: int, base_url: str, work):
             server.kill()
 
 
-def _prefetch(owner_id: str | None):
+def _tensor_parallel_size(model_tier: str) -> int:
+    name = f"STACKTWIN_{model_tier.upper()}_JOB_TENSOR_PARALLEL_SIZE"
+    raw = os.getenv(name, os.getenv("STACKTWIN_JOB_TENSOR_PARALLEL_SIZE", "1"))
+    try:
+        value = int(raw)
+    except ValueError as error:
+        raise ValueError(f"{name} must be a positive integer") from error
+    if value < 1:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
+
+
+def _prefetch(owner_id: str | None, week_start: str | None):
     def work() -> None:
         from stacktwin.pipeline.ingest import prefetch_weekly_content
         from stacktwin.storage.factory import get_storage
 
-        print(prefetch_weekly_content(get_storage(), owner_id=owner_id), flush=True)
+        print(
+            prefetch_weekly_content(get_storage(), owner_id=owner_id, week_start=week_start),
+            flush=True,
+        )
 
     return work
 
 
-def _score(user_id: str):
+def _score(user_id: str, week_start: str | None):
     def work() -> None:
         from stacktwin.api.routes.digest import _run_pipeline
 
-        response = _run_pipeline(user_id=user_id, stop_after_scoring=True)
+        response = _run_pipeline(
+            user_id=user_id, stop_after_scoring=True, target_week=week_start
+        )
         print(response.body.decode("utf-8"), flush=True)
         return json.loads(response.body)["run"]["run_id"]
 
     return work
 
 
-def _generate(user_id: str, run_id: str):
+def _generate(user_id: str, run_id: str, week_start: str | None):
     def work() -> None:
         from stacktwin.api.routes.digest import _run_pipeline
 
-        response = _run_pipeline(user_id=user_id, run_id=run_id)
+        response = _run_pipeline(user_id=user_id, run_id=run_id, target_week=week_start)
         print(response.body.decode("utf-8"), flush=True)
 
     return work

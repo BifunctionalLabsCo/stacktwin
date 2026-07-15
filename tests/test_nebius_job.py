@@ -17,6 +17,16 @@ def test_submit_weekly_pipeline_job_builds_finite_job_command(monkeypatch, tmp_p
     monkeypatch.setenv("STACKTWIN_JOB_SUBNET_ID", "subnet-test")
     monkeypatch.setenv("STACKTWIN_JOB_ENV_FILE", str(env_file))
     monkeypatch.setenv("NEBIUS_CLI", "/bin/nebius")
+    monkeypatch.setenv("STACKTWIN_APP_MODE", "cloud")
+    for name in (
+        "STACKTWIN_CLOUD_JOB_PLATFORM",
+        "STACKTWIN_CLOUD_JOB_PRESET",
+        "STACKTWIN_CLOUD_JOB_DISK_SIZE",
+        "STACKTWIN_CLOUD_JOB_SHM_SIZE",
+        "STACKTWIN_CLOUD_JOB_TIMEOUT",
+        "STACKTWIN_CLOUD_JOB_PREEMPTIBLE",
+    ):
+        monkeypatch.delenv(name, raising=False)
 
     captured = {}
 
@@ -37,9 +47,12 @@ def test_submit_weekly_pipeline_job_builds_finite_job_command(monkeypatch, tmp_p
     assert command[:4] == ["/bin/nebius", "ai", "job", "create"]
     assert command[command.index("--image") + 1] == "registry.example/stacktwin-job:test"
     assert command[command.index("--args") + 1] == "--user-id ada@example.com"
+    assert command[command.index("--platform") + 1] == "gpu-l40s-a"
+    assert command[command.index("--preset") + 1] == "1gpu-8vcpu-32gb"
+    assert command[command.index("--disk-size") + 1] == "100Gi"
+    assert "--preemptible" in command
     assert command[command.index("--restart-policy") + 1] == "never"
     assert command[command.index("--inject-file") + 1].endswith(":/run/secrets/stacktwin.env")
-    assert "--preemptible" in command
     assert captured["kwargs"] == {"check": True, "capture_output": True, "text": True}
     assert job.job_id == "job-test"
     assert job.state == "STARTING"
@@ -64,6 +77,32 @@ def test_pipeline_route_returns_accepted_job(monkeypatch):
         "job_name": "stacktwin-weekly-test",
         "job_state": "STARTING",
     }
+
+
+def test_local_pipeline_route_syncs_profile_then_submits_qwen_job(monkeypatch, tmp_path: Path):
+    from stacktwin.profile.schema import DeveloperProfile
+    from stacktwin.storage.json_storage import JSONStorage
+
+    local_storage = JSONStorage(
+        profiles_dir=str(tmp_path / "profiles"), outputs_dir=str(tmp_path / "outputs")
+    )
+    cloud_storage = JSONStorage(
+        profiles_dir=str(tmp_path / "cloud-profiles"), outputs_dir=str(tmp_path / "cloud-outputs")
+    )
+    local_storage.save_profile("ada@example.com", DeveloperProfile(name="Ada"))
+    monkeypatch.setenv("STACKTWIN_APP_MODE", "local")
+    monkeypatch.setattr(digest, "get_storage", lambda: local_storage)
+    monkeypatch.setattr(digest, "get_cloud_storage", lambda: cloud_storage)
+    monkeypatch.setattr(
+        digest,
+        "submit_weekly_pipeline_job",
+        lambda user_id: SubmittedJob("job-test", "stacktwin-weekly-test", "STARTING"),
+    )
+
+    response = digest.run_pipeline(user_id="ada@example.com")
+
+    assert response.status_code == 202
+    assert cloud_storage.load_profile("ada@example.com").name == "Ada"
 
 
 def test_submit_weekly_content_prefetch_job_builds_prefetch_command(monkeypatch, tmp_path: Path):
@@ -94,3 +133,30 @@ def test_submit_weekly_content_prefetch_job_builds_prefetch_command(monkeypatch,
         "--prefetch-weekly-content --prefetch-owner lease-owner"
     )
     assert command[command.index("--name") + 1].startswith("stacktwin-prefetch-")
+
+
+def test_jobs_can_target_a_specific_week(monkeypatch, tmp_path: Path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("STACKTWIN_APP_MODE=local\n")
+    monkeypatch.setenv("STACKTWIN_JOB_IMAGE", "registry.example/stacktwin-job:test")
+    monkeypatch.setenv("STACKTWIN_JOB_SUBNET_ID", "subnet-test")
+    monkeypatch.setenv("STACKTWIN_JOB_ENV_FILE", str(env_file))
+    monkeypatch.setenv("NEBIUS_CLI", "/bin/nebius")
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        return CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps({"metadata": {"id": "job-test", "name": "weekly"}}),
+            stderr="",
+        )
+
+    monkeypatch.setattr("stacktwin.jobs.nebius.subprocess.run", fake_run)
+
+    submit_weekly_pipeline_job("ada@example.com", week_start="2026-07-06")
+
+    assert captured["command"][captured["command"].index("--args") + 1] == (
+        "--user-id ada@example.com --week-start 2026-07-06"
+    )

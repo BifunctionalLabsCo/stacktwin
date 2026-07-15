@@ -117,6 +117,22 @@ def test_current_track_distinguishes_missing_generation(monkeypatch, tmp_path):
     assert response.json()["detail"]["code"] == "track_not_ready"
 
 
+def test_latest_track_returns_a_previous_week_when_current_week_is_missing(monkeypatch, tmp_path):
+    storage = JSONStorage(
+        profiles_dir=str(tmp_path / "profiles"),
+        outputs_dir=str(tmp_path / "outputs"),
+    )
+    previous_week = (datetime.now(UTC).date() - timedelta(days=7)).isoformat()
+    track = build_weekly_track(_digest(previous_week), _profile())
+    storage.save_track("ada@example.com", track)
+    monkeypatch.setattr(track_routes, "get_storage", lambda: storage)
+
+    response = client.get("/api/track/latest?user_id=ada@example.com")
+
+    assert response.status_code == 200
+    assert response.json()["weekStart"] == previous_week
+
+
 def test_current_track_and_lesson_use_persisted_content(monkeypatch, tmp_path):
     storage = JSONStorage(
         profiles_dir=str(tmp_path / "profiles"),

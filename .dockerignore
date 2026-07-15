@@ -5,5 +5,6 @@
 .ruff_cache
 outputs
 profiles
-src
+src/.next
+src/node_modules
 tests

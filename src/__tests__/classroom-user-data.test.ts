@@ -12,7 +12,7 @@ describe("classroom user parsing", () => {
   it("keeps configured users separate from persisted custom profiles", () => {
     const configured = parseConfiguredClassroomUsers("custom@example.com|Custom");
     const stored = parseStoredClassroomUsers(
-      JSON.stringify([{ id: "profile-1@stacktwin.local", label: "New profile" }])
+      JSON.stringify([{ id: "profile-1@stacktwin.local", label: "New Twin" }])
     );
 
     expect(configured.map((user) => user.id)).toEqual(["custom@example.com"]);

@@ -18,7 +18,6 @@ from stacktwin.pipeline.ingest import (
     SOURCE_LIMIT,
     load_or_build_tag_index,
     load_or_fetch,
-    prefetch_weekly_content,
 )
 from stacktwin.pipeline.run import (
     PipelineRun,
@@ -45,6 +44,26 @@ MAX_RUN_HISTORY = 20
 def _cloud_content_fallback():
     if app_mode() != "local":
         return None
+
+
+def _job_storage():
+    """Return storage shared by the app and finite Job workers."""
+    return get_cloud_storage() if app_mode() == "local" else get_storage()
+
+
+def _sync_local_profile_for_job(user_id: str) -> None:
+    """Make a local profile available to the S3-backed Job before submission."""
+    if app_mode() != "local":
+        return
+    local_storage = get_storage()
+    profile = local_storage.load_profile(user_id)
+    if not profile:
+        return
+    get_cloud_storage().save_profile(
+        user_id,
+        profile,
+        source_hash=local_storage.load_profile_source_hash(user_id),
+    )
     try:
         return get_cloud_storage()
     except OSError:
@@ -62,23 +81,14 @@ def prefetch_content(x_stacktwin_schedule_token: str | None = Header(default=Non
     ):
         raise HTTPException(status_code=401, detail="Invalid schedule token.")
 
-    if app_mode() == "cloud":
-        try:
-            job = submit_weekly_content_prefetch_job(str(uuid.uuid4()))
-        except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
-            raise HTTPException(status_code=502, detail=sanitize_failure_summary(error)) from error
-        return JSONResponse(
-            status_code=202,
-            content={"status": "submitted", "job_id": job.job_id, "job_name": job.name},
-        )
-
     try:
-        result = prefetch_weekly_content(
-            get_storage(), fallback_storage=_cloud_content_fallback()
-        )
-    except Exception as error:
+        job = submit_weekly_content_prefetch_job(str(uuid.uuid4()))
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
         raise HTTPException(status_code=502, detail=sanitize_failure_summary(error)) from error
-    return JSONResponse(content={"status": "prefetched", **result})
+    return JSONResponse(
+        status_code=202,
+        content={"status": "submitted", "job_id": job.job_id, "job_name": job.name},
+    )
 
 
 @router.post("/prefetch/ensure")
@@ -101,27 +111,19 @@ def ensure_prefetched_content():
             return {"status": "ready", "week_start": week_start}
 
     owner_id = str(uuid.uuid4())
-    if not storage.acquire_content_prefetch_lease(week_start, owner_id):
-        lease = storage.load_content_prefetch_lease(week_start) or {}
+    job_storage = _job_storage()
+    if not job_storage.acquire_content_prefetch_lease(week_start, owner_id):
+        lease = job_storage.load_content_prefetch_lease(week_start) or {}
         return {"status": lease.get("status", "pending"), "week_start": week_start}
 
-    if app_mode() == "cloud":
-        try:
-            job = submit_weekly_content_prefetch_job(owner_id)
-        except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
-            storage.fail_content_prefetch_lease(
-                week_start, owner_id, sanitize_failure_summary(error)
-            )
-            raise HTTPException(status_code=502, detail=sanitize_failure_summary(error)) from error
-        return {"status": "pending", "week_start": week_start, "job_id": job.job_id}
-
     try:
-        result = prefetch_weekly_content(
-            storage, owner_id=owner_id, fallback_storage=fallback_storage
+        job = submit_weekly_content_prefetch_job(owner_id)
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
+        job_storage.fail_content_prefetch_lease(
+            week_start, owner_id, sanitize_failure_summary(error)
         )
-    except Exception as error:
         raise HTTPException(status_code=502, detail=sanitize_failure_summary(error)) from error
-    return {"status": "ready", **result}
+    return {"status": "pending", "week_start": week_start, "job_id": job.job_id}
 
 
 def _log(run_id: str, stage: str, message: str) -> None:
@@ -143,29 +145,29 @@ def _transition(storage, run: PipelineRun, stage: RunStage, status: str | None =
 
 @router.post("/run")
 def run_pipeline(user_id: str = Query(..., description="User email address")):
-    """Submit cloud work or run the complete local pipeline inline."""
-    if app_mode() == "cloud":
-        try:
-            job = submit_weekly_pipeline_job(user_id)
-        except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
-            raise HTTPException(status_code=502, detail=sanitize_failure_summary(error)) from error
-        return JSONResponse(
-            status_code=202,
-            content={
-                "status": "submitted",
-                "user_id": user_id,
-                "job_id": job.job_id,
-                "job_name": job.name,
-                "job_state": job.state,
-            },
-        )
-    return _run_pipeline(user_id)
+    """Submit one finite Qwen Job; app mode only controls artifact placement."""
+    try:
+        _sync_local_profile_for_job(user_id)
+        job = submit_weekly_pipeline_job(user_id)
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
+        raise HTTPException(status_code=502, detail=sanitize_failure_summary(error)) from error
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "submitted",
+            "user_id": user_id,
+            "job_id": job.job_id,
+            "job_name": job.name,
+            "job_state": job.state,
+        },
+    )
 
 
 def _run_pipeline(
     user_id: str,
     stop_after_scoring: bool = False,
     run_id: str | None = None,
+    target_week: str | None = None,
 ):
     """
     Trigger the full pipeline for a specific user.
@@ -179,7 +181,7 @@ def _run_pipeline(
     storage = get_storage()
     fallback_storage = _cloud_content_fallback()
     today = datetime.now(UTC).date()
-    week_start = (today - timedelta(days=today.weekday())).isoformat()
+    week_start = target_week or (today - timedelta(days=today.weekday())).isoformat()
 
     if run_id:
         run = next(
@@ -192,6 +194,11 @@ def _run_pipeline(
         )
         if not run:
             raise RuntimeError(f"Pipeline run {run_id} was not found for {user_id}.")
+        if target_week and run.target_week != target_week:
+            raise RuntimeError(
+                "Pipeline run target week does not match the requested backfill week."
+            )
+        week_start = run.target_week
         run.status = "running"
         _transition(storage, run, run.current_stage)
     else:

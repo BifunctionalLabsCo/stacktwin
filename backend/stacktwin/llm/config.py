@@ -12,10 +12,19 @@ def app_mode() -> AppMode:
     return mode
 
 
+def model_mode() -> AppMode:
+    """Return the legacy job tier marker retained for configuration compatibility."""
+    mode = os.getenv("STACKTWIN_MODEL_MODE", app_mode()).lower()
+    if mode not in ("local", "cloud"):
+        raise ValueError("STACKTWIN_MODEL_MODE must be either 'local' or 'cloud'")
+    return mode
+
+
 def model_for(stage: ModelStage) -> str:
-    """Use one small model locally and stage-specific production models in cloud mode."""
-    if app_mode() == "local":
-        return os.getenv("NEBIUS_MODEL_TEST", "Qwen/Qwen3-0.6B")
-    if stage == "map":
-        return os.getenv("NEBIUS_MODEL_MAP", "NousResearch/Hermes-4-70B")
-    return os.getenv("NEBIUS_MODEL_RED", "Qwen/Qwen3-235B-A22B-Thinking-2507")
+    """Use the economical Qwen worker for every finite pipeline phase.
+
+    App mode controls artifact placement only. Stage-specific prompts provide
+    specialization without allocating a second, larger model tier.
+    """
+    del stage
+    return os.getenv("STACKTWIN_JOB_MODEL", os.getenv("NEBIUS_MODEL_TEST", "Qwen/Qwen3-0.6B"))

@@ -5,6 +5,8 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from stacktwin.llm import app_mode
+
 
 @dataclass(frozen=True)
 class SubmittedJob:
@@ -13,14 +15,20 @@ class SubmittedJob:
     state: str
 
 
-def submit_weekly_pipeline_job(user_id: str) -> SubmittedJob:
+def submit_weekly_pipeline_job(user_id: str, week_start: str | None = None) -> SubmittedJob:
     """Submit one finite Nebius Job that generates a learner's weekly track."""
-    return _submit_job(f"--user-id {user_id}", "weekly")
+    week_arg = f" --week-start {week_start}" if week_start else ""
+    return _submit_job(f"--user-id {user_id}{week_arg}", "weekly")
 
 
-def submit_weekly_content_prefetch_job(owner_id: str) -> SubmittedJob:
+def submit_weekly_content_prefetch_job(
+    owner_id: str, week_start: str | None = None
+) -> SubmittedJob:
     """Submit one finite Nebius Job that refreshes the shared weekly source pool."""
-    return _submit_job(f"--prefetch-weekly-content --prefetch-owner {owner_id}", "prefetch")
+    week_arg = f" --week-start {week_start}" if week_start else ""
+    return _submit_job(
+        f"--prefetch-weekly-content --prefetch-owner {owner_id}{week_arg}", "prefetch"
+    )
 
 
 def _submit_job(job_args: str, job_kind: str) -> SubmittedJob:
@@ -45,17 +53,17 @@ def _submit_job(job_args: str, job_kind: str) -> SubmittedJob:
         "--args",
         job_args,
         "--platform",
-        os.getenv("STACKTWIN_JOB_PLATFORM", "gpu-l40s-a"),
+        _job_setting("PLATFORM", "gpu-l40s-a"),
         "--preset",
-        os.getenv("STACKTWIN_JOB_PRESET", "1gpu-8vcpu-32gb"),
+        _job_setting("PRESET", "1gpu-8vcpu-32gb"),
         "--disk-size",
-        os.getenv("STACKTWIN_JOB_DISK_SIZE", "100Gi"),
+        _job_setting("DISK_SIZE", "100Gi"),
         "--shm-size",
-        os.getenv("STACKTWIN_JOB_SHM_SIZE", "16Gi"),
+        _job_setting("SHM_SIZE", "16Gi"),
         "--subnet-id",
         subnet_id,
         "--timeout",
-        os.getenv("STACKTWIN_JOB_TIMEOUT", "2h"),
+        _job_setting("TIMEOUT", "2h"),
         "--restart-policy",
         "never",
         "--inject-file",
@@ -63,7 +71,7 @@ def _submit_job(job_args: str, job_kind: str) -> SubmittedJob:
         "--format",
         "json",
     ]
-    if os.getenv("STACKTWIN_JOB_PREEMPTIBLE", "true").lower() == "true":
+    if _job_setting("PREEMPTIBLE", "true").lower() == "true":
         command.append("--preemptible")
 
     completed = subprocess.run(command, check=True, capture_output=True, text=True)
@@ -72,6 +80,26 @@ def _submit_job(job_args: str, job_kind: str) -> SubmittedJob:
         job_id=payload["metadata"]["id"],
         name=payload["metadata"]["name"],
         state=payload.get("status", {}).get("state", "STARTING"),
+    )
+
+
+def _job_setting(name: str, default: str) -> str:
+    """Select finite-job settings without changing the economical model tier."""
+    tier = app_mode().upper()
+    if tier == "CLOUD":
+        default = {
+            "PLATFORM": "gpu-l40s-a",
+            "PRESET": "1gpu-8vcpu-32gb",
+            "DISK_SIZE": "100Gi",
+            "SHM_SIZE": "16Gi",
+            "TIMEOUT": "2h",
+            "PREEMPTIBLE": "true",
+        }.get(name, default)
+        # Cloud mode changes storage placement, not model or machine size.
+        return os.getenv(f"STACKTWIN_CLOUD_JOB_{name}", default)
+    return os.getenv(
+        f"STACKTWIN_LOCAL_JOB_{name}",
+        os.getenv(f"STACKTWIN_JOB_{name}", default),
     )
 
 

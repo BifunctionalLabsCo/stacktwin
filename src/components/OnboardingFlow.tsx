@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, CheckCircle2, FileText, Palette, RotateCcw, Search, Sparkles, UploadCloud, Wrench } from "lucide-react";
+import { AlertCircle, CheckCircle2, FileText, Palette, Search, Sparkles, UploadCloud, Wrench } from "lucide-react";
 import {
   buildQuickStartProfile,
   clearOnboardingFlowState,
@@ -10,11 +10,9 @@ import {
   createQuickStartProfileDraft,
   emptyProfile,
   loadOnboardingFlowState,
-  pollLatestRun,
   PROFILE_PRESETS,
   saveManualProfile,
   saveOnboardingFlowState,
-  triggerGeneration,
   uploadCv,
   validateCvFile,
   type QuickStartProfileDraft
@@ -23,17 +21,12 @@ import { useActiveClassroomUserId } from "../lib/classroom-user";
 import type { DeveloperProfile } from "../lib/profile-types";
 import { ProfileReviewForm } from "./ProfileReviewForm";
 
-const POLL_INTERVAL_MS = 4000;
-const MAX_POLL_ATTEMPTS = 30;
-
 type Step =
   | { name: "choose" }
   | { name: "quick"; draft: QuickStartProfileDraft }
   | { name: "uploading"; progress: number }
   | { name: "processing" }
   | { name: "review"; profile: DeveloperProfile; isUnchanged: boolean }
-  | { name: "generating" }
-  | { name: "failed"; message: string }
   | {
       name: "error";
       kind: "invalid_file" | "extraction_failed" | "network_error";
@@ -53,14 +46,10 @@ export function OnboardingFlow({
   const userId = useActiveClassroomUserId();
   const [step, setStep] = useState<Step>(() => resolveInitialStep(userId, initialProfile, startMode));
   const [submitting, setSubmitting] = useState(false);
-  const generationStarted = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const pollAttempts = useRef(0);
 
   useEffect(() => {
     setSubmitting(false);
-    generationStarted.current = false;
-    pollAttempts.current = 0;
     setStep(resolveInitialStep(userId, initialProfile, startMode));
   }, [initialProfile, startMode, userId]);
 
@@ -113,24 +102,6 @@ export function OnboardingFlow({
     });
   }, [userId]);
 
-  const startGeneration = useCallback(() => {
-    if (generationStarted.current) {
-      return;
-    }
-    generationStarted.current = true;
-    pollAttempts.current = 0;
-    setStep({ name: "generating" });
-
-    triggerGeneration(userId).then((outcome) => {
-      if (outcome.status === "network_error") {
-        generationStarted.current = false;
-        setStep({ name: "failed", message: outcome.message });
-        return;
-      }
-      pollUntilReady(userId);
-    });
-  }, [userId]);
-
   function handleQuickStart(profileDraft: QuickStartProfileDraft) {
     if (submitting) {
       return;
@@ -144,11 +115,7 @@ export function OnboardingFlow({
         return;
       }
       clearOnboardingFlowState(userId);
-      if (mode === "settings") {
-        router.replace("/");
-        return;
-      }
-      startGeneration();
+      router.replace("/");
     });
   }
 
@@ -160,33 +127,6 @@ export function OnboardingFlow({
     });
   }
 
-  function pollUntilReady(activeUserId: string) {
-    pollAttempts.current += 1;
-    pollLatestRun(activeUserId).then((result) => {
-      if (result.learnerStatus === "ready") {
-        router.replace("/");
-        return;
-      }
-      if (result.learnerStatus === "failed") {
-        generationStarted.current = false;
-        setStep({
-          name: "failed",
-          message: ("failureSummary" in result && result.failureSummary) || "Generation failed. You can retry below."
-        });
-        return;
-      }
-      if (pollAttempts.current >= MAX_POLL_ATTEMPTS) {
-        generationStarted.current = false;
-        setStep({
-          name: "failed",
-          message: "Generation is taking longer than expected. Retry to try again."
-        });
-        return;
-      }
-      setTimeout(() => pollUntilReady(activeUserId), POLL_INTERVAL_MS);
-    });
-  }
-
   function handleConfirm(profile: DeveloperProfile, isUnchanged: boolean) {
     if (submitting) {
       return;
@@ -195,11 +135,7 @@ export function OnboardingFlow({
 
     if (isUnchanged) {
       setSubmitting(false);
-      if (mode === "settings") {
-        router.replace("/");
-        return;
-      }
-      startGeneration();
+      router.replace("/");
       return;
     }
 
@@ -210,11 +146,7 @@ export function OnboardingFlow({
         return;
       }
       clearOnboardingFlowState(userId);
-      if (mode === "settings") {
-        router.replace("/");
-        return;
-      }
-      startGeneration();
+      router.replace("/");
     });
   }
 
@@ -225,8 +157,8 @@ export function OnboardingFlow({
         <section className="profilePresetSection" aria-labelledby="profile-presets-heading">
           <div className="sectionIntro">
             <p className="eyebrow">Choose a starting point</p>
-            <h2 id="profile-presets-heading">Bootstrap a learning profile</h2>
-            <p>Pick the profile that best matches how you learn today. You can edit every detail before saving.</p>
+            <h2 id="profile-presets-heading">Bootstrap your digital twin</h2>
+            <p>Pick the twin that best matches how you learn today. You can edit every detail before saving.</p>
           </div>
           <div className="profilePresetGrid">
             {PROFILE_PRESETS.map((preset) => (
@@ -248,14 +180,14 @@ export function OnboardingFlow({
               onClick={() => setStep({ name: "review", profile: emptyProfile(), isUnchanged: false })}
             >
               <FileText size={24} />
-              <span className="profilePresetLabel">New Profile</span>
-              <span className="profilePresetDescription">Start from a blank profile and shape it yourself.</span>
+              <span className="profilePresetLabel">New Twin</span>
+              <span className="profilePresetDescription">Start from a blank twin and shape it yourself.</span>
               <span className="profilePresetAction">Create from scratch <span aria-hidden="true">→</span></span>
             </button>
           </div>
         </section>
         <p className="onboardingDivider">Or build one from an existing source</p>
-        <section className="onboardingChoices" aria-label="Other profile setup options">
+        <section className="onboardingChoices" aria-label="Other digital twin setup options">
           <button
             type="button"
             className="onboardingCard"
@@ -263,7 +195,7 @@ export function OnboardingFlow({
           >
             <Sparkles size={28} />
             <h2>Quick start editor</h2>
-            <p>Use a compact form when you want to customize a profile before saving it.</p>
+            <p>Use a compact form when you want to customize a digital twin before saving it.</p>
           </button>
           <button
             type="button"
@@ -307,12 +239,12 @@ export function OnboardingFlow({
       <main className="onboardingShell">
         <OnboardingHeader />
         <p className="privacyNote">
-          Enter the smallest useful profile first. You can expand the details later from the full
-          profile editor.
+          Enter the smallest useful twin first. You can expand the details later from the full
+          twin editor.
         </p>
         <form
           className="reviewForm quickStartForm"
-          aria-label="Quick start profile"
+          aria-label="Quick start twin"
           onSubmit={(event) => {
             event.preventDefault();
             handleQuickStart(step.draft);
@@ -388,7 +320,7 @@ export function OnboardingFlow({
               Open full editor
             </button>
             <button type="submit" className="primaryAction" disabled={submitting}>
-              {submitting ? "Creating profile..." : "Create profile and generate week"}
+              {submitting ? "Creating twin..." : "Create Twin"}
             </button>
           </div>
         </form>
@@ -419,7 +351,7 @@ export function OnboardingFlow({
           <Search size={20} />
           <div>
             <h2>Reading your CV</h2>
-            <p>Extracting the useful signals and preparing your learning profile.</p>
+            <p>Extracting the useful signals and preparing your digital twin.</p>
           </div>
         </section>
       </main>
@@ -455,7 +387,7 @@ export function OnboardingFlow({
         <ProfileReviewForm
           profile={step.profile}
           submitting={submitting}
-          confirmLabel={mode === "settings" ? "Save preferences" : "Confirm and generate my first week"}
+          confirmLabel={mode === "settings" ? "Save Twin" : "Confirm Twin"}
           onConfirm={(profile) =>
             handleConfirm(
               profile,
@@ -467,36 +399,7 @@ export function OnboardingFlow({
     );
   }
 
-  if (step.name === "generating") {
-    return (
-      <main className="onboardingShell">
-        <OnboardingHeader />
-        <section className="statePanel" aria-live="polite">
-          <RotateCcw size={20} />
-          <div>
-            <h2>Preparing your first weekly classroom</h2>
-            <p>StackTwin is collecting source signals and shaping your learning cards. This usually takes under a minute.</p>
-          </div>
-        </section>
-      </main>
-    );
-  }
-
-  return (
-    <main className="onboardingShell">
-      <OnboardingHeader />
-      <section className="statePanel isError" role="alert">
-        <AlertCircle size={20} />
-        <div>
-          <h2>Generation failed</h2>
-          <p>{step.message}</p>
-        </div>
-      </section>
-      <button type="button" className="secondaryAction" onClick={startGeneration}>
-        Retry generation
-      </button>
-    </main>
-  );
+  return null;
 }
 
 function PresetIcon({ preset }: { preset: "engineer" | "creator" | "researcher" }) {
@@ -518,7 +421,7 @@ function OnboardingHeader() {
         </p>
         <h1>Set up StackTwin</h1>
         <p className="lede">
-          Build your developer profile once, then jump into your personalized weekly classroom.
+          Build your digital twin once, then jump into your personalized weekly classroom.
         </p>
       </div>
     </section>

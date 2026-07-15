@@ -44,6 +44,10 @@ class NebiusS3Storage(StorageBackend):
                 "Nebius storage requires boto3. Install the project dependencies first."
             ) from error
 
+        # StackTwin always supplies explicit Nebius Object Storage credentials.
+        # An unrelated AWS_PROFILE from a developer shell must not make boto3
+        # attempt to load an AWS shared-config profile before using them.
+        os.environ.pop("AWS_PROFILE", None)
         return boto3.client(
             "s3",
             endpoint_url=endpoint_url,
@@ -323,7 +327,7 @@ class NebiusS3Storage(StorageBackend):
             return True
         except Exception as error:
             code = getattr(error, "response", {}).get("Error", {}).get("Code")
-            if code not in {"PreconditionFailed", "412"}:
+            if code not in {"PreconditionFailed", "KeyAlreadyExists", "412"}:
                 raise
 
         response = self.client.get_object(Bucket=self.bucket, Key=key)

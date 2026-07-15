@@ -1,8 +1,5 @@
 FROM node:22-bookworm-slim AS frontend-build
 
-ARG NEXT_PUBLIC_STACKTWIN_DEMO_MODE=false
-ENV NEXT_PUBLIC_STACKTWIN_DEMO_MODE=${NEXT_PUBLIC_STACKTWIN_DEMO_MODE}
-
 WORKDIR /app/src
 
 COPY src/package.json src/package-lock.json ./

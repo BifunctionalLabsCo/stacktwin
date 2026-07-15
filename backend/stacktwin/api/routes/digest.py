@@ -145,7 +145,7 @@ def _transition(storage, run: PipelineRun, stage: RunStage, status: str | None =
 
 @router.post("/run")
 def run_pipeline(user_id: str = Query(..., description="User email address")):
-    """Submit one finite Job; local mode selects Qwen and cloud selects production models."""
+    """Submit one finite Qwen Job; app mode only controls artifact placement."""
     try:
         _sync_local_profile_for_job(user_id)
         job = submit_weekly_pipeline_job(user_id)

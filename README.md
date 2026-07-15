@@ -114,12 +114,11 @@ STACKTWIN_JOB_ENV_FILE=.env
 STACKTWIN_LOCAL_JOB_PLATFORM=gpu-l40s-a
 STACKTWIN_LOCAL_JOB_PRESET=1gpu-8vcpu-32gb
 STACKTWIN_LOCAL_JOB_TENSOR_PARALLEL_SIZE=1
-STACKTWIN_CLOUD_JOB_PLATFORM=gpu-h100-sxm
-STACKTWIN_CLOUD_JOB_PRESET=8gpu-128vcpu-1600gb
-STACKTWIN_CLOUD_JOB_TENSOR_PARALLEL_SIZE=8
+STACKTWIN_CLOUD_JOB_PLATFORM=gpu-l40s-a
+STACKTWIN_CLOUD_JOB_PRESET=1gpu-8vcpu-32gb
+STACKTWIN_CLOUD_JOB_TENSOR_PARALLEL_SIZE=1
+STACKTWIN_JOB_MODEL=Qwen/Qwen3-0.6B
 NEBIUS_MODEL_TEST=Qwen/Qwen3-0.6B
-NEBIUS_MODEL_MAP=NousResearch/Hermes-4-70B
-NEBIUS_MODEL_RED=Qwen/Qwen3-235B-A22B-Thinking-2507
 ```
 
 The `dev` tag currently resolves to the tested amd64 image used by this branch.
@@ -132,10 +131,10 @@ Every Job uses Object Storage for its durable run state, shared content, scored
 checkpoint, digest, and track, then exits. The application caches what it reads
 locally, preferring that cache before refreshing it from Object Storage.
 
-`STACKTWIN_APP_MODE=local` starts Qwen 0.6B for both Job phases. It is the
-inexpensive full-flow mode for a locally running app. `STACKTWIN_APP_MODE=cloud`
-uses Hermes for tagging and scoring, then the designated Qwen model for digest
-and learning-track generation.
+Both `STACKTWIN_APP_MODE=local` and `cloud` use Qwen 0.6B on one finite L40S
+worker. The mode changes where application artifacts are read and cached, not
+the model or GPU size. Stage-specific prompts and compact batches specialize
+Qwen for tagging, comparative ranking, digest preparation, and lesson authoring.
 
 The API process needs the Nebius CLI installed and authenticated. A pipeline
 trigger submits the Job and returns `202 Accepted` with its ID:

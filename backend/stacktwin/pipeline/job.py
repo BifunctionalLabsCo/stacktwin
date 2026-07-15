@@ -19,14 +19,13 @@ def main() -> int:
     parser.add_argument("--prefetch-owner")
     args = parser.parse_args()
 
-    # The base image defaults to cloud storage. The injected app configuration
-    # deliberately selects the model tier, so it must override image defaults.
+    # The injected app configuration selects storage behavior and finite-job
+    # sizing, so it must override image defaults.
     load_dotenv(os.getenv("STACKTWIN_JOB_ENV_PATH", "/run/secrets/stacktwin.env"), override=True)
     requested_model_mode = app_mode()
     tensor_parallel_size = _tensor_parallel_size(requested_model_mode)
-    # Jobs always use S3 so the app can observe their durable state. Preserve
-    # the caller's tier separately: a local app run uses Qwen, cloud uses the
-    # production map/reduce pair.
+    # Jobs always use S3 so the app can observe durable state. Preserve the
+    # caller mode only for its one-GPU resource overrides; every phase uses Qwen.
     os.environ["STACKTWIN_APP_MODE"] = "cloud"
     os.environ["STACKTWIN_MODEL_MODE"] = requested_model_mode
     port = int(os.getenv("STACKTWIN_JOB_VLLM_PORT", "8000"))
@@ -35,6 +34,7 @@ def main() -> int:
     os.environ["NEBIUS_API_URL"] = f"{base_url}/v1"
     os.environ["NEBIUS_API_KEY"] = "stacktwin-local-job"
     os.environ["NEBIUS_TOKEN"] = "stacktwin-local-job"
+    os.environ["STACKTWIN_PIPELINE_LLM_ACTIVE"] = "true"
     if args.prefetch_weekly_content:
         _run_model_phase(
             model_for("map"), port, base_url, _prefetch(args.prefetch_owner), tensor_parallel_size
@@ -63,7 +63,7 @@ def _run_model_phase(model: str, port: int, base_url: str, work, tensor_parallel
             "--port",
             str(port),
             "--max-model-len",
-            os.getenv("STACKTWIN_JOB_MAX_MODEL_LEN", "4096"),
+            os.getenv("STACKTWIN_JOB_MAX_MODEL_LEN", "8192"),
             "--tensor-parallel-size",
             str(tensor_parallel_size),
         ]

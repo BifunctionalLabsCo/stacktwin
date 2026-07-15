@@ -78,24 +78,18 @@ def _submit_job(job_args: str, job_kind: str) -> SubmittedJob:
 
 
 def _job_setting(name: str, default: str) -> str:
-    """Select isolated compute settings for the requested app model tier.
-
-    The legacy generic setting remains a fallback so existing local deployments
-    continue to work. Cloud jobs must not silently inherit a one-GPU local
-    runner because the production map/reduce models require tensor parallelism.
-    """
+    """Select finite-job settings without changing the economical model tier."""
     tier = app_mode().upper()
     if tier == "CLOUD":
         default = {
-            "PLATFORM": "gpu-h100-sxm",
-            "PRESET": "8gpu-128vcpu-1600gb",
-            "DISK_SIZE": "600Gi",
-            "SHM_SIZE": "64Gi",
-            "TIMEOUT": "4h",
-            "PREEMPTIBLE": "false",
+            "PLATFORM": "gpu-l40s-a",
+            "PRESET": "1gpu-8vcpu-32gb",
+            "DISK_SIZE": "100Gi",
+            "SHM_SIZE": "16Gi",
+            "TIMEOUT": "2h",
+            "PREEMPTIBLE": "true",
         }.get(name, default)
-        # Generic STACKTWIN_JOB_* settings are the legacy local tier. Do not
-        # let them downgrade a cloud run to an undersized one-GPU worker.
+        # Cloud mode changes storage placement, not model or machine size.
         return os.getenv(f"STACKTWIN_CLOUD_JOB_{name}", default)
     return os.getenv(
         f"STACKTWIN_LOCAL_JOB_{name}",

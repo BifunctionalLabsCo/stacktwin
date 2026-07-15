@@ -25,50 +25,46 @@ MODEL = model_for("reduce")
 
 DIGEST_SIZE = int(os.getenv("DIGEST_SIZE", "10"))  # articles in weekly digest
 QUIZ_COUNT = int(os.getenv("QUIZ_COUNT", "3"))  # articles to generate quizzes for
+DIGEST_BATCH_SIZE = int(os.getenv("DIGEST_BATCH_SIZE", "2"))
 
 
 SUMMARY_PROMPT = """
-You are a developer learning assistant writing a weekly digest.
-Given an article and a developer profile, write a tight 2-3 sentence
-plain-English summary and a one-line "why this matters for you" specific
-to this developer's stack and goals.
+You are StackTwin's digest editor. Turn a small batch of already-ranked source
+records into concise, evidence-grounded learning briefs for one learner. The
+ranking score tells you why each source was selected; the supplied source
+excerpt is the boundary of what you may claim.
 
 Return ONLY a valid JSON object:
-{
-  "summary": "2-3 sentence plain-English summary of the article",
-  "why_this_matters": "one sentence specific to this developer's stack and goals",
-  "estimated_reading_minutes": integer
-}
-
-Rules:
-- Write for a working developer, not an academic
-- Be specific about technologies when relevant
-- No markdown, no code fences, JSON only
-"""
-
-QUIZ_PROMPT = """
-You are a developer learning assistant.
-Given an article summary, generate 3 multiple-choice quiz questions
-to help a developer retain the key concepts.
-
-Return ONLY a valid JSON object:
-{"items": [
-  {
-    "question": "question text",
-    "options": ["A) option", "B) option", "C) option", "D) option"],
+{"items": [{
+  "id": "a1",
+  "summary": "2-3 sentences: core idea, useful detail, practical implication",
+  "why_this_matters": "one learner-specific sentence",
+  "estimated_reading_minutes": integer,
+  "quiz": [{
+    "question": "one applied comprehension question",
+    "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
     "correct": "A",
-    "explanation": "one sentence explanation of why this is correct"
-  }
-]}
+    "explanation": "one evidence-based sentence"
+  }]
+}]}
 
 Rules:
-- Questions should test practical understanding, not trivia
-- One clearly correct answer per question
-- No markdown, no code fences, JSON array only
+- Preserve every input id and return exactly one item per input
+- Explain the source, do not merely restate its title
+- Connect why_this_matters to an explicit learner technology, goal, domain, or role
+- Use the ranking rationale, but replace vague fallback language with a concrete connection
+- Keep claims within the supplied title, excerpt, tags, and score rationale
+- For video, estimate watch time from supplied ranking metadata; otherwise estimate reading time
+- Return one quiz only when needs_quiz is true; otherwise return an empty quiz list
+- Quiz questions must test application or tradeoffs, never title recall
+- Use four plausible options and exactly one correct letter
+- No markdown, code fences, preamble, or additional keys
 """
 
 
-def _call_nebius(system_prompt: str, user_content: str) -> str | None:
+def _call_nebius(
+    system_prompt: str, user_content: str, *, max_tokens: int = 2200
+) -> str | None:
     """
     Make a single call to the Nebius Endpoint.
     Returns raw response text or None on failure.
@@ -78,8 +74,8 @@ def _call_nebius(system_prompt: str, user_content: str) -> str | None:
 
     payload = {
         "model": MODEL,
-        "max_tokens": 800,
-        "temperature": 0.2,
+        "max_tokens": max_tokens,
+        "temperature": 0.15,
         "response_format": json_response_format(),
         "chat_template_kwargs": chat_template_kwargs(),
         "messages": [
@@ -112,49 +108,93 @@ def _parse_json(raw: str | None, fallback):
     return parse_json_value(raw) or fallback
 
 
-def _generate_summary(article: Article, profile: DeveloperProfile) -> dict:
-    """
-    Generate a plain-English summary and why-it-matters for one article.
-    Falls back to article's existing summary if no API key.
-    """
-    user_content = f"""
-Developer stack: {", ".join(profile.current_stack)}
-Developer learning: {", ".join(profile.learning)}
-Career direction: {profile.career_direction or "not specified"}
-
-Article title: {article.title}
-Article summary: {article.summary or "no summary available"}
-Article tags: {", ".join(article.tags)}
-Article source: {article.source}
-""".strip()
-
-    raw = _call_nebius(SUMMARY_PROMPT, user_content)
-    result = _parse_json(raw, fallback=None)
-
-    if result:
-        return result
-
-    # Stub fallback
+def _profile_context(profile: DeveloperProfile) -> dict:
     return {
-        "summary": article.summary or article.title,
-        "why_this_matters": "Relevant to your current learning path",
-        "estimated_reading_minutes": 5,
+        "role": profile.current_role or "Software Engineer",
+        "seniority": str(profile.seniority or "mid"),
+        "current_stack": profile.current_stack,
+        "learning": profile.learning,
+        "domains": profile.domains,
+        "career_direction": profile.career_direction,
+        "learning_goals": profile.learning_goals,
+        "topics_to_avoid": profile.topics_to_avoid,
+        "weekly_time_budget_hours": profile.weekly_time_budget_hours,
     }
 
 
-def _generate_quiz(article: Article, summary: str) -> list[dict]:
-    """
-    Generate 3 quiz questions for one article.
-    Returns empty list if no API key or on failure.
-    """
-    user_content = f"""
-Article title: {article.title}
-Article summary: {summary}
-""".strip()
+def _fallback_brief(article: Article, score: ArticleScore) -> dict:
+    return {
+        "summary": article.summary or article.title,
+        "why_this_matters": score.why_this_matters,
+        "estimated_reading_minutes": max(3, score.time_cost_minutes),
+        "quiz": [],
+    }
 
-    raw = _call_nebius(QUIZ_PROMPT, user_content)
+
+def _prepare_digest_batch(
+    batch: list[tuple[Article, ArticleScore]],
+    profile: DeveloperProfile,
+    quiz_ids: set[str],
+) -> list[dict]:
+    records = []
+    for index, (article, score) in enumerate(batch):
+        record_id = f"a{index + 1}"
+        records.append(
+            {
+                "id": record_id,
+                "title": article.title,
+                "source": article.source,
+                "excerpt": (article.summary or "")[:1200],
+                "tags": article.tags[:8],
+                "ranking": score.model_dump(mode="json"),
+                "needs_quiz": record_id in quiz_ids,
+            }
+        )
+
+    raw = _call_nebius(
+        SUMMARY_PROMPT,
+        "LEARNER PROFILE\n"
+        f"{json.dumps(_profile_context(profile), ensure_ascii=False)}\n\n"
+        "RANKED SOURCE BATCH\n"
+        f"{json.dumps(records, ensure_ascii=False)}",
+    )
     result = _parse_json(raw, fallback={})
-    return result.get("items", []) if isinstance(result, dict) else []
+    items = result.get("items", []) if isinstance(result, dict) else []
+    by_id = {item.get("id"): item for item in items if isinstance(item, dict)}
+
+    prepared = []
+    for index, (article, score) in enumerate(batch):
+        item = by_id.get(f"a{index + 1}")
+        if not item:
+            prepared.append(_fallback_brief(article, score))
+            continue
+        try:
+            prepared.append(
+                {
+                    "summary": str(item.get("summary") or article.summary or article.title),
+                    "why_this_matters": str(
+                        item.get("why_this_matters") or score.why_this_matters
+                    ),
+                    "estimated_reading_minutes": max(
+                        3,
+                        min(
+                            120,
+                            int(
+                                item.get("estimated_reading_minutes")
+                                or score.time_cost_minutes
+                                or 5
+                            ),
+                        ),
+                    ),
+                    "quiz": (
+                        item.get("quiz", []) if isinstance(item.get("quiz", []), list) else []
+                    ),
+                }
+            )
+        except (TypeError, ValueError) as error:
+            print(f"[digest] invalid brief for '{article.title[:50]}': {error}")
+            prepared.append(_fallback_brief(article, score))
+    return prepared
 
 
 def build_digest(
@@ -178,31 +218,32 @@ def build_digest(
     print(f"[digest] building digest from top {len(top_articles)} of {total_processed} articles")
 
     digest_items = []
-
-    for i, (article, score) in enumerate(top_articles):
-        print(f"[digest] {i + 1}/{len(top_articles)} — {article.title[:50]}")
-
-        # Generate summary
-        summary_data = _generate_summary(article, profile)
-
-        # Generate quiz for top articles only
-        quiz = []
-        if i < quiz_top_n:
-            print(f"[digest] generating quiz for: {article.title[:50]}")
-            quiz = _generate_quiz(article, summary_data["summary"])
-
-        digest_items.append(
-            DigestItem(
-                title=article.title,
-                url=article.url,
-                source=article.source,
-                summary=summary_data["summary"],
-                score=score,
-                estimated_reading_minutes=summary_data.get("estimated_reading_minutes", 5),
-                tags=article.tags,
-                quiz=quiz if quiz else [],
+    total_batches = -(-len(top_articles) // DIGEST_BATCH_SIZE)
+    for offset in range(0, len(top_articles), DIGEST_BATCH_SIZE):
+        batch = top_articles[offset : offset + DIGEST_BATCH_SIZE]
+        quiz_ids = {
+            f"a{index + 1}"
+            for index in range(len(batch))
+            if offset + index < quiz_top_n
+        }
+        print(f"[digest] preparing batch {offset // DIGEST_BATCH_SIZE + 1}/{total_batches}")
+        briefs = _prepare_digest_batch(batch, profile, quiz_ids)
+        for (article, score), brief in zip(batch, briefs, strict=True):
+            personalized_score = score.model_copy(
+                update={"why_this_matters": brief["why_this_matters"]}
             )
-        )
+            digest_items.append(
+                DigestItem(
+                    title=article.title,
+                    url=article.url,
+                    source=article.source,
+                    summary=brief["summary"],
+                    score=personalized_score,
+                    estimated_reading_minutes=brief["estimated_reading_minutes"],
+                    tags=article.tags,
+                    quiz=brief["quiz"],
+                )
+            )
 
     digest = WeeklyDigest(
         week_start=week_start or datetime.now(UTC).strftime("%Y-%m-%d"),

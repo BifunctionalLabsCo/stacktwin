@@ -23,8 +23,10 @@ NEBIUS_API_KEY = os.getenv("NEBIUS_TOKEN") or os.getenv("NEBIUS_API_KEY", "")
 MODEL = model_for("map")
 
 TAG_INDEX_PROMPT = """
-You are a content tagger for a developer learning platform.
-Given a list of technical articles, assign 2-5 normalized topic tags to each.
+You are StackTwin's content-normalization editor. Convert a compact batch of
+fresh source metadata into a stable topic index used later for personalized
+ranking. Use title, source, excerpt, and existing tags together; never infer a
+technology from hype language alone.
 
 Tags must be lowercase technology or domain names. Examples:
 "python", "javascript", "rust", "machine-learning", "llm", "kubernetes", "devops",
@@ -32,13 +34,17 @@ Tags must be lowercase technology or domain names. Examples:
 "web-development", "infrastructure", "open-source", "career", "algorithms"
 
 Return ONLY a valid JSON object:
-{"items": [{"url": "...", "tags": ["tag1", "tag2", "tag3"]}, ...]}
+{"items": [{"id": "a1", "tags": ["tag1", "tag2", "tag3"]}, ...]}
 
 Rules:
-- Use the exact article URL provided
+- Preserve every input id exactly and return one result per input
 - Prefer specific tech names ("fastapi", "pytorch") over generic ("framework", "library")
+- Include one useful domain tag such as "frontend", "ai-research", or "devops"
+- Use 3-5 unique tags, lowercase kebab-case, ordered specific to broad
+- Treat existing tags as hints, not guaranteed truth
 - For non-technical articles use domain tags ("career", "open-source", "tools")
-- No markdown, no code fences, JSON array only
+- Do not invent version numbers, products, or claims absent from the input
+- No markdown, no code fences, JSON object only
 """
 
 # Registry: add new sources here, nothing else changes.
@@ -99,23 +105,29 @@ def _call_nebius_for_tags(articles_batch: list[Article]) -> list[dict]:
     if not NEBIUS_API_KEY:
         return []
 
-    article_list = "\n".join(
-        [
-            f"{i + 1}. URL: {a.url}\n   Title: {a.title}\n"
-            f"   Existing tags: {', '.join(a.tags) or 'none'}"
-            for i, a in enumerate(articles_batch)
-        ]
-    )
+    records = [
+        {
+            "id": f"a{index + 1}",
+            "title": article.title,
+            "source": article.source,
+            "excerpt": (article.summary or "")[:500],
+            "existing_tags": article.tags[:8],
+        }
+        for index, article in enumerate(articles_batch)
+    ]
 
     payload = {
         "model": MODEL,
-        "max_tokens": 1000,
+        "max_tokens": 900,
         "temperature": 0.1,
         "response_format": json_response_format(),
         "chat_template_kwargs": chat_template_kwargs(),
         "messages": [
             {"role": "system", "content": TAG_INDEX_PROMPT},
-            {"role": "user", "content": f"Tag these articles:\n\n{article_list}"},
+            {
+                "role": "user",
+                "content": f"NORMALIZE THIS BATCH\n{json.dumps(records, ensure_ascii=False)}",
+            },
         ],
     }
 
@@ -127,7 +139,12 @@ def _call_nebius_for_tags(articles_batch: list[Article]) -> list[dict]:
         )
         response.raise_for_status()
         result = parse_json_value(response_content(response.json()))
-        return result.get("items", []) if isinstance(result, dict) else []
+        items = result.get("items", []) if isinstance(result, dict) else []
+        by_id = {item.get("id"): item for item in items if isinstance(item, dict)}
+        return [
+            {"url": article.url, "tags": by_id.get(f"a{index + 1}", {}).get("tags", [])}
+            for index, article in enumerate(articles_batch)
+        ]
     except Exception as e:
         print(f"[ingest] tag LLM call failed: {e}")
         return []
@@ -150,7 +167,7 @@ def build_tag_index(articles: list[Article]) -> dict[str, list[str]]:
         print(f"[ingest] tag index built from existing tags (no API key): {len(tag_index)} tags")
         return tag_index
 
-    batch_size = 12
+    batch_size = int(os.getenv("TAGGING_BATCH_SIZE", "8"))
     all_tagged: list[dict] = []
     total_batches = -(-len(articles) // batch_size)  # ceiling division
 
@@ -160,7 +177,11 @@ def build_tag_index(articles: list[Article]) -> dict[str, list[str]]:
         tagged = _call_nebius_for_tags(batch)
         all_tagged.extend(tagged)
 
-    url_to_tags = {item["url"]: item.get("tags", []) for item in all_tagged if "url" in item}
+    url_to_tags = {
+        item["url"]: item.get("tags", [])
+        for item in all_tagged
+        if item.get("url") and item.get("tags")
+    }
 
     # Fall back to existing tags for any article the LLM missed
     for article in articles:

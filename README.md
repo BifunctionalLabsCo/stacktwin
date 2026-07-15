@@ -108,7 +108,7 @@ Configure `.env` with the image, subnet, model, and Object Storage credentials:
 
 ```bash
 STACKTWIN_APP_MODE=local
-STACKTWIN_JOB_IMAGE=cr.eu-north1.nebius.cloud/e00wkter9vcdmapban/stacktwin-job@sha256:9a219ea40337cca143becbd6e3d9bf48b28c2ccbc4ebc7bfb550af87f689b0d3
+STACKTWIN_JOB_IMAGE=cr.eu-north1.nebius.cloud/e00wkter9vcdmapban/stacktwin-job:dev
 STACKTWIN_JOB_SUBNET_ID=<subnet-id>
 STACKTWIN_JOB_ENV_FILE=.env
 NEBIUS_MODEL_TEST=Qwen/Qwen3-0.6B
@@ -116,9 +116,10 @@ NEBIUS_MODEL_MAP=NousResearch/Hermes-4-70B
 NEBIUS_MODEL_RED=Qwen/Qwen3-235B-A22B-Thinking-2507
 ```
 
-The published digest pins the tested amd64 image used by this branch. Developers
-do not need to build or push an image for ordinary Job testing. Rebuild and push
-only when changing the Job container or backend code, then update the digest.
+The `dev` tag currently resolves to the tested amd64 image used by this branch.
+Developers do not need to build or push an image for ordinary Job testing.
+Rebuild and push only when changing the Job container or backend code, then
+update the tag.
 
 Both modes submit finite Nebius Jobs; no persistent model endpoint is required.
 Every Job uses Object Storage for its durable run state, shared content, scored

@@ -327,7 +327,7 @@ class NebiusS3Storage(StorageBackend):
             return True
         except Exception as error:
             code = getattr(error, "response", {}).get("Error", {}).get("Code")
-            if code not in {"PreconditionFailed", "412"}:
+            if code not in {"PreconditionFailed", "KeyAlreadyExists", "412"}:
                 raise
 
         response = self.client.get_object(Bucket=self.bucket, Key=key)

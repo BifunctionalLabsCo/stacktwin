@@ -34,6 +34,7 @@ def submit_weekly_content_prefetch_job(
 def _submit_job(job_args: str, job_kind: str) -> SubmittedJob:
     image = _required("STACKTWIN_JOB_IMAGE")
     subnet_id = _required("STACKTWIN_JOB_SUBNET_ID")
+    project_id = _required("NEBIUS_PROJECT_ID")
     env_file = Path(os.getenv("STACKTWIN_JOB_ENV_FILE", ".env")).resolve()
     if not env_file.is_file():
         raise OSError(f"StackTwin Job env file does not exist: {env_file}")
@@ -44,6 +45,8 @@ def _submit_job(job_args: str, job_kind: str) -> SubmittedJob:
         "ai",
         "job",
         "create",
+        "--parent-id",
+        project_id,
         "--name",
         name,
         "--image",

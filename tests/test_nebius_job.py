@@ -14,6 +14,7 @@ def test_submit_weekly_pipeline_job_builds_finite_job_command(monkeypatch, tmp_p
     env_file = tmp_path / ".env"
     env_file.write_text("STACKTWIN_APP_MODE=cloud\n")
     monkeypatch.setenv("STACKTWIN_JOB_IMAGE", "registry.example/stacktwin-job:test")
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "project-test")
     monkeypatch.setenv("STACKTWIN_JOB_SUBNET_ID", "subnet-test")
     monkeypatch.setenv("STACKTWIN_JOB_ENV_FILE", str(env_file))
     monkeypatch.setenv("NEBIUS_CLI", "/bin/nebius")
@@ -45,6 +46,7 @@ def test_submit_weekly_pipeline_job_builds_finite_job_command(monkeypatch, tmp_p
 
     command = captured["command"]
     assert command[:4] == ["/bin/nebius", "ai", "job", "create"]
+    assert command[command.index("--parent-id") + 1] == "project-test"
     assert command[command.index("--image") + 1] == "registry.example/stacktwin-job:test"
     assert command[command.index("--args") + 1] == "--user-id ada@example.com"
     assert command[command.index("--platform") + 1] == "gpu-l40s-a"
@@ -109,6 +111,7 @@ def test_submit_weekly_content_prefetch_job_builds_prefetch_command(monkeypatch,
     env_file = tmp_path / ".env"
     env_file.write_text("STACKTWIN_APP_MODE=cloud\n")
     monkeypatch.setenv("STACKTWIN_JOB_IMAGE", "registry.example/stacktwin-job:test")
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "project-test")
     monkeypatch.setenv("STACKTWIN_JOB_SUBNET_ID", "subnet-test")
     monkeypatch.setenv("STACKTWIN_JOB_ENV_FILE", str(env_file))
     monkeypatch.setenv("NEBIUS_CLI", "/bin/nebius")
@@ -139,6 +142,7 @@ def test_jobs_can_target_a_specific_week(monkeypatch, tmp_path: Path):
     env_file = tmp_path / ".env"
     env_file.write_text("STACKTWIN_APP_MODE=local\n")
     monkeypatch.setenv("STACKTWIN_JOB_IMAGE", "registry.example/stacktwin-job:test")
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "project-test")
     monkeypatch.setenv("STACKTWIN_JOB_SUBNET_ID", "subnet-test")
     monkeypatch.setenv("STACKTWIN_JOB_ENV_FILE", str(env_file))
     monkeypatch.setenv("NEBIUS_CLI", "/bin/nebius")

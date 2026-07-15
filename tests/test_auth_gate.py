@@ -40,3 +40,13 @@ def test_local_prefetch_failures_return_a_sanitized_http_error(monkeypatch):
 
     assert response.status_code == 502
     assert response.json()["detail"] == "OSError: source unavailable"
+
+
+def test_login_page_explains_stacktwin(monkeypatch):
+    monkeypatch.setenv("STACKTWIN_APP_PASSWORD", "shared-password")
+
+    response = TestClient(app).get("/login")
+
+    assert response.status_code == 200
+    assert "Keep learning, without chasing what to learn." in response.text
+    assert "Open StackTwin" in response.text

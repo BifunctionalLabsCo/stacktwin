@@ -94,8 +94,8 @@ export function createClassroomUser() {
     : String(Date.now());
   const user: ClassroomUser = {
     id: `profile-${suffix}@stacktwin.local`,
-    label: "New profile",
-    description: "Personalized learning profile"
+    label: "New Twin",
+    description: "Personalized digital twin"
   };
 
   if (typeof window !== "undefined") {

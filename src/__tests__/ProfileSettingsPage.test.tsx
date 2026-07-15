@@ -78,11 +78,11 @@ describe("ProfileSettingsPage missing-profile and reload states", () => {
 
     render(<ProfileSettingsPage />);
 
-    expect(await screen.findByRole("link", { name: /quick start/i })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: /quick twin/i })).toHaveAttribute(
       "href",
       "/onboarding?start=quick"
     );
-    expect(screen.getByRole("link", { name: /full onboarding/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /configure twin/i })).toHaveAttribute(
       "href",
       "/onboarding"
     );

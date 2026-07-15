@@ -180,14 +180,14 @@ export function WeeklyTrackHome() {
           <div>
             <h2>
               {state.status === "profile_required"
-                ? "Developer profile required"
+                ? "Digital twin required"
                 : state.status === "empty"
                   ? "No weekly track yet"
                   : "Track unavailable"}
             </h2>
             <p>
               {state.status === "empty"
-                ? "Generate when you are ready. StackTwin will first collect this week’s content for every profile tag, then build your modules."
+                ? "Generate when you are ready. StackTwin will first collect this week’s content for every digital twin signal, then build your modules."
                 : state.message}
             </p>
             {state.status !== "profile_required" && (
@@ -273,8 +273,7 @@ function HeaderShell() {
         <p className="eyebrow">This week's track</p>
         <h1>StackTwin</h1>
         <p className="lede">
-          A compact learning module generated from live technical signals and your developer
-          profile.
+          A compact learning module generated from live technical signals and your digital twin.
         </p>
       </div>
       <div className="tracker" aria-label="Weekly progress">

@@ -157,8 +157,8 @@ export function OnboardingFlow({
         <section className="profilePresetSection" aria-labelledby="profile-presets-heading">
           <div className="sectionIntro">
             <p className="eyebrow">Choose a starting point</p>
-            <h2 id="profile-presets-heading">Bootstrap a learning profile</h2>
-            <p>Pick the profile that best matches how you learn today. You can edit every detail before saving.</p>
+            <h2 id="profile-presets-heading">Bootstrap your digital twin</h2>
+            <p>Pick the twin that best matches how you learn today. You can edit every detail before saving.</p>
           </div>
           <div className="profilePresetGrid">
             {PROFILE_PRESETS.map((preset) => (
@@ -180,14 +180,14 @@ export function OnboardingFlow({
               onClick={() => setStep({ name: "review", profile: emptyProfile(), isUnchanged: false })}
             >
               <FileText size={24} />
-              <span className="profilePresetLabel">New Profile</span>
-              <span className="profilePresetDescription">Start from a blank profile and shape it yourself.</span>
+              <span className="profilePresetLabel">New Twin</span>
+              <span className="profilePresetDescription">Start from a blank twin and shape it yourself.</span>
               <span className="profilePresetAction">Create from scratch <span aria-hidden="true">→</span></span>
             </button>
           </div>
         </section>
         <p className="onboardingDivider">Or build one from an existing source</p>
-        <section className="onboardingChoices" aria-label="Other profile setup options">
+        <section className="onboardingChoices" aria-label="Other digital twin setup options">
           <button
             type="button"
             className="onboardingCard"
@@ -195,7 +195,7 @@ export function OnboardingFlow({
           >
             <Sparkles size={28} />
             <h2>Quick start editor</h2>
-            <p>Use a compact form when you want to customize a profile before saving it.</p>
+            <p>Use a compact form when you want to customize a digital twin before saving it.</p>
           </button>
           <button
             type="button"
@@ -239,12 +239,12 @@ export function OnboardingFlow({
       <main className="onboardingShell">
         <OnboardingHeader />
         <p className="privacyNote">
-          Enter the smallest useful profile first. You can expand the details later from the full
-          profile editor.
+          Enter the smallest useful twin first. You can expand the details later from the full
+          twin editor.
         </p>
         <form
           className="reviewForm quickStartForm"
-          aria-label="Quick start profile"
+          aria-label="Quick start twin"
           onSubmit={(event) => {
             event.preventDefault();
             handleQuickStart(step.draft);
@@ -320,7 +320,7 @@ export function OnboardingFlow({
               Open full editor
             </button>
             <button type="submit" className="primaryAction" disabled={submitting}>
-              {submitting ? "Creating profile..." : "Create profile"}
+              {submitting ? "Creating twin..." : "Create Twin"}
             </button>
           </div>
         </form>
@@ -351,7 +351,7 @@ export function OnboardingFlow({
           <Search size={20} />
           <div>
             <h2>Reading your CV</h2>
-            <p>Extracting the useful signals and preparing your learning profile.</p>
+            <p>Extracting the useful signals and preparing your digital twin.</p>
           </div>
         </section>
       </main>
@@ -387,7 +387,7 @@ export function OnboardingFlow({
         <ProfileReviewForm
           profile={step.profile}
           submitting={submitting}
-          confirmLabel={mode === "settings" ? "Save preferences" : "Confirm profile"}
+          confirmLabel={mode === "settings" ? "Save Twin" : "Confirm Twin"}
           onConfirm={(profile) =>
             handleConfirm(
               profile,
@@ -421,7 +421,7 @@ function OnboardingHeader() {
         </p>
         <h1>Set up StackTwin</h1>
         <p className="lede">
-          Build your developer profile once, then jump into your personalized weekly classroom.
+          Build your digital twin once, then jump into your personalized weekly classroom.
         </p>
       </div>
     </section>

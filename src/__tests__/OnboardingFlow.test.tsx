@@ -60,10 +60,10 @@ describe("OnboardingFlow manual entry path", () => {
 
     await user.click(screen.getByRole("button", { name: /enter details manually/i }));
 
-    expect(await screen.findByLabelText(/developer profile review/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText(/digital twin review/i)).toBeInTheDocument();
 
     await user.type(screen.getByLabelText(/^name$/i), "Ada Lovelace");
-    await user.click(screen.getByRole("button", { name: /confirm profile/i }));
+    await user.click(screen.getByRole("button", { name: /confirm twin/i }));
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
     expect(fetchMock).toHaveBeenCalledWith(
@@ -78,7 +78,7 @@ describe("OnboardingFlow manual entry path", () => {
 });
 
 describe("OnboardingFlow quick start path", () => {
-  it("offers Engineer, Creator, Researcher, and New Profile bootstrap paths", async () => {
+  it("offers Engineer, Creator, Researcher, and New Twin bootstrap paths", async () => {
     const user = userEvent.setup();
 
     render(<OnboardingFlow />);
@@ -86,11 +86,11 @@ describe("OnboardingFlow quick start path", () => {
     expect(screen.getByRole("button", { name: /engineer/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /creator/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /researcher/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /new profile/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /new twin/i })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /creator/i }));
 
-    expect(await screen.findByLabelText(/quick start profile/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText(/quick start twin/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^current role$/i)).toHaveValue("AI Content Creator");
   });
 
@@ -110,13 +110,13 @@ describe("OnboardingFlow quick start path", () => {
 
     render(<OnboardingFlow startMode="quick" />);
 
-    expect(await screen.findByLabelText(/quick start profile/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText(/quick start twin/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/preferred format/i)).not.toBeInTheDocument();
 
     await user.clear(screen.getByLabelText(/^name$/i));
     await user.type(screen.getByLabelText(/^name$/i), "Ada Lovelace");
     await user.type(screen.getByLabelText(/learning goals/i), ", deepen product instincts");
-    await user.click(screen.getByRole("button", { name: /create profile/i }));
+    await user.click(screen.getByRole("button", { name: /create twin/i }));
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
     expect(fetchMock).toHaveBeenCalledWith(
@@ -177,7 +177,7 @@ describe("OnboardingFlow error recovery", () => {
     render(<OnboardingFlow initialProfile={emptyProfile()} />);
 
     await user.type(screen.getByLabelText(/^name$/i), "Ada");
-    await user.click(screen.getByRole("button", { name: /confirm profile/i }));
+    await user.click(screen.getByRole("button", { name: /confirm twin/i }));
 
     expect(
       await screen.findByText(/could not reach the stacktwin backend/i)
@@ -208,6 +208,6 @@ describe("OnboardingFlow CV upload happy path", () => {
     });
     instance.onload?.();
 
-    expect(await screen.findByLabelText(/developer profile review/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText(/digital twin review/i)).toBeInTheDocument();
   });
 });

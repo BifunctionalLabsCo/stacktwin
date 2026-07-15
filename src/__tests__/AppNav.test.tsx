@@ -39,7 +39,7 @@ describe("AppNav learner switcher", () => {
     render(<AppNav />);
 
     expect(screen.getByLabelText(/switch active learner/i)).toHaveValue("researcher@stacktwin.dev");
-    expect(screen.getByRole("option", { name: /new profile/i })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /new twin/i })).toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText(/switch active learner/i), "__new_profile__");
 

@@ -33,7 +33,7 @@ export default function ProfileSettingsPage() {
   if (state.status === "loading") {
     return (
       <main className="onboardingShell">
-        <p>Loading your profile…</p>
+        <p>Loading your digital twin…</p>
       </main>
     );
   }
@@ -43,14 +43,14 @@ export default function ProfileSettingsPage() {
       <main className="onboardingShell">
         <section className="statePanel isError" role="alert">
           <div>
-            <h2>No profile found</h2>
-            <p>Start with a quick demo profile or open the full onboarding flow for this learner.</p>
+            <h2>No digital twin found</h2>
+            <p>Start with a quick demo twin or configure one for this learner.</p>
             <div className="profileFallbackActions">
               <Link className="secondaryAction" href="/onboarding/?start=quick">
-                Quick start
+                Quick Twin
               </Link>
               <Link className="secondaryAction" href="/onboarding/">
-                Full onboarding
+                Configure Twin
               </Link>
             </div>
           </div>

@@ -40,7 +40,7 @@ export function ProfileReviewForm({
   return (
     <form
       className="reviewForm"
-      aria-label="Developer profile review"
+      aria-label="Digital twin review"
       onSubmit={(event) => {
         event.preventDefault();
         onConfirm(draft);

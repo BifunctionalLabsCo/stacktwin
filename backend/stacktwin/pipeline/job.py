@@ -19,7 +19,9 @@ def main() -> int:
     parser.add_argument("--prefetch-owner")
     args = parser.parse_args()
 
-    load_dotenv(os.getenv("STACKTWIN_JOB_ENV_PATH", "/run/secrets/stacktwin.env"))
+    # The base image defaults to cloud storage. The injected app configuration
+    # deliberately selects the model tier, so it must override image defaults.
+    load_dotenv(os.getenv("STACKTWIN_JOB_ENV_PATH", "/run/secrets/stacktwin.env"), override=True)
     requested_model_mode = app_mode()
     # Jobs always use S3 so the app can observe their durable state. Preserve
     # the caller's tier separately: a local app run uses Qwen, cloud uses the

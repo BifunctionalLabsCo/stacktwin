@@ -19,5 +19,8 @@ export function getClassroomUserId() {
 }
 
 export function isDemoMode() {
-  return process.env.NEXT_PUBLIC_STACKTWIN_DEMO_MODE === "true";
+  // A fresh local checkout should present a complete classroom without cloud
+  // credentials. Set this explicitly to "false" before building to read live
+  // local or Object Storage-backed tracks.
+  return process.env.NEXT_PUBLIC_STACKTWIN_DEMO_MODE !== "false";
 }

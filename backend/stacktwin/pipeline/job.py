@@ -17,6 +17,7 @@ def main() -> int:
     command.add_argument("--user-id")
     command.add_argument("--prefetch-weekly-content", action="store_true")
     parser.add_argument("--prefetch-owner")
+    parser.add_argument("--week-start", help="ISO Monday to backfill; defaults to the current week")
     args = parser.parse_args()
 
     # The injected app configuration selects storage behavior and finite-job
@@ -37,15 +38,27 @@ def main() -> int:
     os.environ["STACKTWIN_PIPELINE_LLM_ACTIVE"] = "true"
     if args.prefetch_weekly_content:
         _run_model_phase(
-            model_for("map"), port, base_url, _prefetch(args.prefetch_owner), tensor_parallel_size
+            model_for("map"),
+            port,
+            base_url,
+            _prefetch(args.prefetch_owner, args.week_start),
+            tensor_parallel_size,
         )
         return 0
 
     run_id = _run_model_phase(
-        model_for("map"), port, base_url, _score(args.user_id), tensor_parallel_size
+        model_for("map"),
+        port,
+        base_url,
+        _score(args.user_id, args.week_start),
+        tensor_parallel_size,
     )
     _run_model_phase(
-        model_for("reduce"), port, base_url, _generate(args.user_id, run_id), tensor_parallel_size
+        model_for("reduce"),
+        port,
+        base_url,
+        _generate(args.user_id, run_id, args.week_start),
+        tensor_parallel_size,
     )
     return 0
 
@@ -91,32 +104,37 @@ def _tensor_parallel_size(model_tier: str) -> int:
     return value
 
 
-def _prefetch(owner_id: str | None):
+def _prefetch(owner_id: str | None, week_start: str | None):
     def work() -> None:
         from stacktwin.pipeline.ingest import prefetch_weekly_content
         from stacktwin.storage.factory import get_storage
 
-        print(prefetch_weekly_content(get_storage(), owner_id=owner_id), flush=True)
+        print(
+            prefetch_weekly_content(get_storage(), owner_id=owner_id, week_start=week_start),
+            flush=True,
+        )
 
     return work
 
 
-def _score(user_id: str):
+def _score(user_id: str, week_start: str | None):
     def work() -> None:
         from stacktwin.api.routes.digest import _run_pipeline
 
-        response = _run_pipeline(user_id=user_id, stop_after_scoring=True)
+        response = _run_pipeline(
+            user_id=user_id, stop_after_scoring=True, target_week=week_start
+        )
         print(response.body.decode("utf-8"), flush=True)
         return json.loads(response.body)["run"]["run_id"]
 
     return work
 
 
-def _generate(user_id: str, run_id: str):
+def _generate(user_id: str, run_id: str, week_start: str | None):
     def work() -> None:
         from stacktwin.api.routes.digest import _run_pipeline
 
-        response = _run_pipeline(user_id=user_id, run_id=run_id)
+        response = _run_pipeline(user_id=user_id, run_id=run_id, target_week=week_start)
         print(response.body.decode("utf-8"), flush=True)
 
     return work

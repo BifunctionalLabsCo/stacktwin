@@ -330,9 +330,10 @@ def prefetch_weekly_content(
     limit_per_source: int = SOURCE_LIMIT,
     owner_id: str | None = None,
     fallback_storage=None,
+    week_start: str | None = None,
 ) -> dict[str, int | str]:
     """Fetch and tag the shared weekly source pool without scoring any learner profile."""
-    week_start = _week_start()
+    week_start = week_start or _week_start()
     try:
         articles = load_or_fetch(
             limit_per_source=limit_per_source,

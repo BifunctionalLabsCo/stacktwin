@@ -15,14 +15,20 @@ class SubmittedJob:
     state: str
 
 
-def submit_weekly_pipeline_job(user_id: str) -> SubmittedJob:
+def submit_weekly_pipeline_job(user_id: str, week_start: str | None = None) -> SubmittedJob:
     """Submit one finite Nebius Job that generates a learner's weekly track."""
-    return _submit_job(f"--user-id {user_id}", "weekly")
+    week_arg = f" --week-start {week_start}" if week_start else ""
+    return _submit_job(f"--user-id {user_id}{week_arg}", "weekly")
 
 
-def submit_weekly_content_prefetch_job(owner_id: str) -> SubmittedJob:
+def submit_weekly_content_prefetch_job(
+    owner_id: str, week_start: str | None = None
+) -> SubmittedJob:
     """Submit one finite Nebius Job that refreshes the shared weekly source pool."""
-    return _submit_job(f"--prefetch-weekly-content --prefetch-owner {owner_id}", "prefetch")
+    week_arg = f" --week-start {week_start}" if week_start else ""
+    return _submit_job(
+        f"--prefetch-weekly-content --prefetch-owner {owner_id}{week_arg}", "prefetch"
+    )
 
 
 def _submit_job(job_args: str, job_kind: str) -> SubmittedJob:

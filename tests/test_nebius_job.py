@@ -133,3 +133,30 @@ def test_submit_weekly_content_prefetch_job_builds_prefetch_command(monkeypatch,
         "--prefetch-weekly-content --prefetch-owner lease-owner"
     )
     assert command[command.index("--name") + 1].startswith("stacktwin-prefetch-")
+
+
+def test_jobs_can_target_a_specific_week(monkeypatch, tmp_path: Path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("STACKTWIN_APP_MODE=local\n")
+    monkeypatch.setenv("STACKTWIN_JOB_IMAGE", "registry.example/stacktwin-job:test")
+    monkeypatch.setenv("STACKTWIN_JOB_SUBNET_ID", "subnet-test")
+    monkeypatch.setenv("STACKTWIN_JOB_ENV_FILE", str(env_file))
+    monkeypatch.setenv("NEBIUS_CLI", "/bin/nebius")
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        return CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps({"metadata": {"id": "job-test", "name": "weekly"}}),
+            stderr="",
+        )
+
+    monkeypatch.setattr("stacktwin.jobs.nebius.subprocess.run", fake_run)
+
+    submit_weekly_pipeline_job("ada@example.com", week_start="2026-07-06")
+
+    assert captured["command"][captured["command"].index("--args") + 1] == (
+        "--user-id ada@example.com --week-start 2026-07-06"
+    )

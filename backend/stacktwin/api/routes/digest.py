@@ -167,6 +167,7 @@ def _run_pipeline(
     user_id: str,
     stop_after_scoring: bool = False,
     run_id: str | None = None,
+    target_week: str | None = None,
 ):
     """
     Trigger the full pipeline for a specific user.
@@ -180,7 +181,7 @@ def _run_pipeline(
     storage = get_storage()
     fallback_storage = _cloud_content_fallback()
     today = datetime.now(UTC).date()
-    week_start = (today - timedelta(days=today.weekday())).isoformat()
+    week_start = target_week or (today - timedelta(days=today.weekday())).isoformat()
 
     if run_id:
         run = next(
@@ -193,6 +194,11 @@ def _run_pipeline(
         )
         if not run:
             raise RuntimeError(f"Pipeline run {run_id} was not found for {user_id}.")
+        if target_week and run.target_week != target_week:
+            raise RuntimeError(
+                "Pipeline run target week does not match the requested backfill week."
+            )
+        week_start = run.target_week
         run.status = "running"
         _transition(storage, run, run.current_stage)
     else:

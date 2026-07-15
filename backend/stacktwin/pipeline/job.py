@@ -23,6 +23,7 @@ def main() -> int:
     # deliberately selects the model tier, so it must override image defaults.
     load_dotenv(os.getenv("STACKTWIN_JOB_ENV_PATH", "/run/secrets/stacktwin.env"), override=True)
     requested_model_mode = app_mode()
+    tensor_parallel_size = _tensor_parallel_size(requested_model_mode)
     # Jobs always use S3 so the app can observe their durable state. Preserve
     # the caller's tier separately: a local app run uses Qwen, cloud uses the
     # production map/reduce pair.
@@ -35,15 +36,21 @@ def main() -> int:
     os.environ["NEBIUS_API_KEY"] = "stacktwin-local-job"
     os.environ["NEBIUS_TOKEN"] = "stacktwin-local-job"
     if args.prefetch_weekly_content:
-        _run_model_phase(model_for("map"), port, base_url, _prefetch(args.prefetch_owner))
+        _run_model_phase(
+            model_for("map"), port, base_url, _prefetch(args.prefetch_owner), tensor_parallel_size
+        )
         return 0
 
-    run_id = _run_model_phase(model_for("map"), port, base_url, _score(args.user_id))
-    _run_model_phase(model_for("reduce"), port, base_url, _generate(args.user_id, run_id))
+    run_id = _run_model_phase(
+        model_for("map"), port, base_url, _score(args.user_id), tensor_parallel_size
+    )
+    _run_model_phase(
+        model_for("reduce"), port, base_url, _generate(args.user_id, run_id), tensor_parallel_size
+    )
     return 0
 
 
-def _run_model_phase(model: str, port: int, base_url: str, work):
+def _run_model_phase(model: str, port: int, base_url: str, work, tensor_parallel_size: int):
     server = subprocess.Popen(
         [
             sys.executable,
@@ -57,6 +64,8 @@ def _run_model_phase(model: str, port: int, base_url: str, work):
             str(port),
             "--max-model-len",
             os.getenv("STACKTWIN_JOB_MAX_MODEL_LEN", "4096"),
+            "--tensor-parallel-size",
+            str(tensor_parallel_size),
         ]
     )
     try:
@@ -68,6 +77,18 @@ def _run_model_phase(model: str, port: int, base_url: str, work):
             server.wait(timeout=30)
         except subprocess.TimeoutExpired:
             server.kill()
+
+
+def _tensor_parallel_size(model_tier: str) -> int:
+    name = f"STACKTWIN_{model_tier.upper()}_JOB_TENSOR_PARALLEL_SIZE"
+    raw = os.getenv(name, os.getenv("STACKTWIN_JOB_TENSOR_PARALLEL_SIZE", "1"))
+    try:
+        value = int(raw)
+    except ValueError as error:
+        raise ValueError(f"{name} must be a positive integer") from error
+    if value < 1:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
 
 
 def _prefetch(owner_id: str | None):

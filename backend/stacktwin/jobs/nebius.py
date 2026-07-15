@@ -5,6 +5,8 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from stacktwin.llm import app_mode
+
 
 @dataclass(frozen=True)
 class SubmittedJob:
@@ -45,17 +47,17 @@ def _submit_job(job_args: str, job_kind: str) -> SubmittedJob:
         "--args",
         job_args,
         "--platform",
-        os.getenv("STACKTWIN_JOB_PLATFORM", "gpu-l40s-a"),
+        _job_setting("PLATFORM", "gpu-l40s-a"),
         "--preset",
-        os.getenv("STACKTWIN_JOB_PRESET", "1gpu-8vcpu-32gb"),
+        _job_setting("PRESET", "1gpu-8vcpu-32gb"),
         "--disk-size",
-        os.getenv("STACKTWIN_JOB_DISK_SIZE", "100Gi"),
+        _job_setting("DISK_SIZE", "100Gi"),
         "--shm-size",
-        os.getenv("STACKTWIN_JOB_SHM_SIZE", "16Gi"),
+        _job_setting("SHM_SIZE", "16Gi"),
         "--subnet-id",
         subnet_id,
         "--timeout",
-        os.getenv("STACKTWIN_JOB_TIMEOUT", "2h"),
+        _job_setting("TIMEOUT", "2h"),
         "--restart-policy",
         "never",
         "--inject-file",
@@ -63,7 +65,7 @@ def _submit_job(job_args: str, job_kind: str) -> SubmittedJob:
         "--format",
         "json",
     ]
-    if os.getenv("STACKTWIN_JOB_PREEMPTIBLE", "true").lower() == "true":
+    if _job_setting("PREEMPTIBLE", "true").lower() == "true":
         command.append("--preemptible")
 
     completed = subprocess.run(command, check=True, capture_output=True, text=True)
@@ -72,6 +74,29 @@ def _submit_job(job_args: str, job_kind: str) -> SubmittedJob:
         job_id=payload["metadata"]["id"],
         name=payload["metadata"]["name"],
         state=payload.get("status", {}).get("state", "STARTING"),
+    )
+
+
+def _job_setting(name: str, default: str) -> str:
+    """Select isolated compute settings for the requested app model tier.
+
+    The legacy generic setting remains a fallback so existing local deployments
+    continue to work. Cloud jobs must not silently inherit a one-GPU local
+    runner because the production map/reduce models require tensor parallelism.
+    """
+    tier = app_mode().upper()
+    if tier == "CLOUD":
+        default = {
+            "PLATFORM": "gpu-h100-sxm",
+            "PRESET": "8gpu-128vcpu-1600gb",
+            "DISK_SIZE": "600Gi",
+            "SHM_SIZE": "64Gi",
+            "TIMEOUT": "4h",
+            "PREEMPTIBLE": "false",
+        }.get(name, default)
+    return os.getenv(
+        f"STACKTWIN_{tier}_JOB_{name}",
+        os.getenv(f"STACKTWIN_JOB_{name}", default),
     )
 
 

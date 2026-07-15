@@ -17,6 +17,7 @@ def test_submit_weekly_pipeline_job_builds_finite_job_command(monkeypatch, tmp_p
     monkeypatch.setenv("STACKTWIN_JOB_SUBNET_ID", "subnet-test")
     monkeypatch.setenv("STACKTWIN_JOB_ENV_FILE", str(env_file))
     monkeypatch.setenv("NEBIUS_CLI", "/bin/nebius")
+    monkeypatch.setenv("STACKTWIN_APP_MODE", "cloud")
 
     captured = {}
 
@@ -37,9 +38,12 @@ def test_submit_weekly_pipeline_job_builds_finite_job_command(monkeypatch, tmp_p
     assert command[:4] == ["/bin/nebius", "ai", "job", "create"]
     assert command[command.index("--image") + 1] == "registry.example/stacktwin-job:test"
     assert command[command.index("--args") + 1] == "--user-id ada@example.com"
+    assert command[command.index("--platform") + 1] == "gpu-h100-sxm"
+    assert command[command.index("--preset") + 1] == "8gpu-128vcpu-1600gb"
+    assert command[command.index("--disk-size") + 1] == "600Gi"
+    assert "--preemptible" not in command
     assert command[command.index("--restart-policy") + 1] == "never"
     assert command[command.index("--inject-file") + 1].endswith(":/run/secrets/stacktwin.env")
-    assert "--preemptible" in command
     assert captured["kwargs"] == {"check": True, "capture_output": True, "text": True}
     assert job.job_id == "job-test"
     assert job.state == "STARTING"

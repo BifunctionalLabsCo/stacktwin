@@ -94,8 +94,11 @@ def _job_setting(name: str, default: str) -> str:
             "TIMEOUT": "4h",
             "PREEMPTIBLE": "false",
         }.get(name, default)
+        # Generic STACKTWIN_JOB_* settings are the legacy local tier. Do not
+        # let them downgrade a cloud run to an undersized one-GPU worker.
+        return os.getenv(f"STACKTWIN_CLOUD_JOB_{name}", default)
     return os.getenv(
-        f"STACKTWIN_{tier}_JOB_{name}",
+        f"STACKTWIN_LOCAL_JOB_{name}",
         os.getenv(f"STACKTWIN_JOB_{name}", default),
     )
 

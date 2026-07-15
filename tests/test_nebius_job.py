@@ -18,6 +18,15 @@ def test_submit_weekly_pipeline_job_builds_finite_job_command(monkeypatch, tmp_p
     monkeypatch.setenv("STACKTWIN_JOB_ENV_FILE", str(env_file))
     monkeypatch.setenv("NEBIUS_CLI", "/bin/nebius")
     monkeypatch.setenv("STACKTWIN_APP_MODE", "cloud")
+    for name in (
+        "STACKTWIN_CLOUD_JOB_PLATFORM",
+        "STACKTWIN_CLOUD_JOB_PRESET",
+        "STACKTWIN_CLOUD_JOB_DISK_SIZE",
+        "STACKTWIN_CLOUD_JOB_SHM_SIZE",
+        "STACKTWIN_CLOUD_JOB_TIMEOUT",
+        "STACKTWIN_CLOUD_JOB_PREEMPTIBLE",
+    ):
+        monkeypatch.delenv(name, raising=False)
 
     captured = {}
 

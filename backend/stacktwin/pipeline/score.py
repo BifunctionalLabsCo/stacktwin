@@ -5,6 +5,12 @@ from collections.abc import Callable
 import httpx
 
 from stacktwin.llm import model_for
+from stacktwin.llm.structured import (
+    chat_template_kwargs,
+    json_response_format,
+    parse_json_value,
+    response_content,
+)
 from stacktwin.pipeline.sources.base import Article
 from stacktwin.profile.schema import ArticleScore, DeveloperProfile
 
@@ -89,7 +95,7 @@ def _stub_score(article: Article) -> ArticleScore:
         learning_value=0.5,
         time_cost_minutes=5,
         overall=0.5,
-        why_this_matters="Stub score — Nebius API key not set yet",
+        why_this_matters="Scoring fallback used because the model response was unavailable.",
         recommended_action="save_for_later",
     )
 
@@ -107,6 +113,8 @@ def score_article(article: Article, profile: DeveloperProfile) -> ArticleScore:
         "model": MODEL,
         "max_tokens": 500,
         "temperature": 0.1,
+        "response_format": json_response_format(),
+        "chat_template_kwargs": chat_template_kwargs(),
         "messages": [
             {"role": "system", "content": SCORING_PROMPT},
             {
@@ -126,16 +134,9 @@ def score_article(article: Article, profile: DeveloperProfile) -> ArticleScore:
             f"{NEBIUS_API_URL}/chat/completions", json=payload, headers=headers, timeout=30.0
         )
         response.raise_for_status()
-        raw = response.json()["choices"][0]["message"]["content"].strip()
-
-        # Strip markdown fences if model returns them despite instructions
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        raw = raw.strip()
-
-        data = json.loads(raw)
+        data = parse_json_value(response_content(response.json()))
+        if not isinstance(data, dict):
+            raise json.JSONDecodeError("Expected a JSON object", "", 0)
         return ArticleScore(**data)
 
     except json.JSONDecodeError as e:

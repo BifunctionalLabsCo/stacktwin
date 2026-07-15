@@ -5,6 +5,12 @@ from datetime import UTC, datetime, timedelta
 import httpx
 
 from stacktwin.llm import model_for
+from stacktwin.llm.structured import (
+    chat_template_kwargs,
+    json_response_format,
+    parse_json_value,
+    response_content,
+)
 from stacktwin.pipeline.sources.arxiv import ArxivSource
 from stacktwin.pipeline.sources.base import Article
 from stacktwin.pipeline.sources.devto import DevToSource
@@ -25,8 +31,8 @@ Tags must be lowercase technology or domain names. Examples:
 "backend", "frontend", "security", "databases", "cloud", "distributed-systems",
 "web-development", "infrastructure", "open-source", "career", "algorithms"
 
-Return ONLY a valid JSON array:
-[{"url": "...", "tags": ["tag1", "tag2", "tag3"]}, ...]
+Return ONLY a valid JSON object:
+{"items": [{"url": "...", "tags": ["tag1", "tag2", "tag3"]}, ...]}
 
 Rules:
 - Use the exact article URL provided
@@ -103,8 +109,10 @@ def _call_nebius_for_tags(articles_batch: list[Article]) -> list[dict]:
 
     payload = {
         "model": MODEL,
-        "max_tokens": 2000,
+        "max_tokens": 1000,
         "temperature": 0.1,
+        "response_format": json_response_format(),
+        "chat_template_kwargs": chat_template_kwargs(),
         "messages": [
             {"role": "system", "content": TAG_INDEX_PROMPT},
             {"role": "user", "content": f"Tag these articles:\n\n{article_list}"},
@@ -118,13 +126,8 @@ def _call_nebius_for_tags(articles_batch: list[Article]) -> list[dict]:
             f"{NEBIUS_API_URL}/chat/completions", json=payload, headers=headers, timeout=60.0
         )
         response.raise_for_status()
-        raw = response.json()["choices"][0]["message"]["content"].strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        result = json.loads(raw.strip())
-        return result if isinstance(result, list) else []
+        result = parse_json_value(response_content(response.json()))
+        return result.get("items", []) if isinstance(result, dict) else []
     except Exception as e:
         print(f"[ingest] tag LLM call failed: {e}")
         return []
@@ -147,7 +150,7 @@ def build_tag_index(articles: list[Article]) -> dict[str, list[str]]:
         print(f"[ingest] tag index built from existing tags (no API key): {len(tag_index)} tags")
         return tag_index
 
-    batch_size = 30
+    batch_size = 12
     all_tagged: list[dict] = []
     total_batches = -(-len(articles) // batch_size)  # ceiling division
 

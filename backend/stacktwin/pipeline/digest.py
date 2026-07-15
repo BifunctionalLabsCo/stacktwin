@@ -5,6 +5,12 @@ from datetime import UTC, datetime
 import httpx
 
 from stacktwin.llm import model_for
+from stacktwin.llm.structured import (
+    chat_template_kwargs,
+    json_response_format,
+    parse_json_value,
+    response_content,
+)
 from stacktwin.pipeline.sources.base import Article
 from stacktwin.profile.schema import (
     ArticleScore,
@@ -45,15 +51,15 @@ You are a developer learning assistant.
 Given an article summary, generate 3 multiple-choice quiz questions
 to help a developer retain the key concepts.
 
-Return ONLY a valid JSON array:
-[
+Return ONLY a valid JSON object:
+{"items": [
   {
     "question": "question text",
     "options": ["A) option", "B) option", "C) option", "D) option"],
     "correct": "A",
     "explanation": "one sentence explanation of why this is correct"
   }
-]
+]}
 
 Rules:
 - Questions should test practical understanding, not trivia
@@ -74,6 +80,8 @@ def _call_nebius(system_prompt: str, user_content: str) -> str | None:
         "model": MODEL,
         "max_tokens": 800,
         "temperature": 0.2,
+        "response_format": json_response_format(),
+        "chat_template_kwargs": chat_template_kwargs(),
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
@@ -87,7 +95,7 @@ def _call_nebius(system_prompt: str, user_content: str) -> str | None:
             f"{NEBIUS_API_URL}/chat/completions", json=payload, headers=headers, timeout=30.0
         )
         response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"].strip()
+        return response_content(response.json())
     except Exception as e:
         print(f"[digest] Nebius call failed: {e}")
         return None
@@ -101,15 +109,7 @@ def _parse_json(raw: str | None, fallback):
     """
     if not raw:
         return fallback
-    try:
-        clean = raw
-        if clean.startswith("```"):
-            clean = clean.split("```")[1]
-            if clean.startswith("json"):
-                clean = clean[4:]
-        return json.loads(clean.strip())
-    except Exception:
-        return fallback
+    return parse_json_value(raw) or fallback
 
 
 def _generate_summary(article: Article, profile: DeveloperProfile) -> dict:
@@ -153,8 +153,8 @@ Article summary: {summary}
 """.strip()
 
     raw = _call_nebius(QUIZ_PROMPT, user_content)
-    result = _parse_json(raw, fallback=[])
-    return result if isinstance(result, list) else []
+    result = _parse_json(raw, fallback={})
+    return result.get("items", []) if isinstance(result, dict) else []
 
 
 def build_digest(

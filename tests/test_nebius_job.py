@@ -55,6 +55,7 @@ def test_submit_weekly_pipeline_job_builds_finite_job_command(monkeypatch, tmp_p
     assert "--preemptible" in command
     assert command[command.index("--restart-policy") + 1] == "never"
     assert command[command.index("--inject-file") + 1].endswith(":/run/secrets/stacktwin.env")
+    assert "--async" in command
     assert captured["kwargs"] == {"check": True, "capture_output": True, "text": True}
     assert job.job_id == "job-test"
     assert job.state == "STARTING"

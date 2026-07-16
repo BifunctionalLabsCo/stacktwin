@@ -71,6 +71,7 @@ def _submit_job(job_args: str, job_kind: str) -> SubmittedJob:
         "never",
         "--inject-file",
         f"{env_file}:/run/secrets/stacktwin.env",
+        "--async",
         "--format",
         "json",
     ]

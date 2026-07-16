@@ -79,6 +79,11 @@ def _submit_job(job_args: str, job_kind: str) -> SubmittedJob:
         command.append("--preemptible")
 
     completed = subprocess.run(command, check=True, capture_output=True, text=True)
+    # The Nebius CLI intentionally produces no resource payload with --async.
+    # The job name is unique and remains useful to the client while the durable
+    # pipeline-run record is created by the worker.
+    if not completed.stdout.strip():
+        return SubmittedJob(job_id=name, name=name, state="SUBMITTED")
     payload = json.loads(completed.stdout)
     return SubmittedJob(
         job_id=payload["metadata"]["id"],

@@ -139,6 +139,25 @@ def test_submit_weekly_content_prefetch_job_builds_prefetch_command(monkeypatch,
     assert command[command.index("--name") + 1].startswith("stacktwin-prefetch-")
 
 
+def test_async_submission_without_a_cli_payload_returns_a_pending_job(monkeypatch, tmp_path: Path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("STACKTWIN_APP_MODE=cloud\n")
+    monkeypatch.setenv("STACKTWIN_JOB_IMAGE", "registry.example/stacktwin-job:test")
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "project-test")
+    monkeypatch.setenv("STACKTWIN_JOB_SUBNET_ID", "subnet-test")
+    monkeypatch.setenv("STACKTWIN_JOB_ENV_FILE", str(env_file))
+    monkeypatch.setattr(
+        "stacktwin.jobs.nebius.subprocess.run",
+        lambda command, **kwargs: CompletedProcess(command, 0, stdout="", stderr=""),
+    )
+
+    job = submit_weekly_pipeline_job("ada@example.com")
+
+    assert job.job_id == job.name
+    assert job.name.startswith("stacktwin-weekly-")
+    assert job.state == "SUBMITTED"
+
+
 def test_jobs_can_target_a_specific_week(monkeypatch, tmp_path: Path):
     env_file = tmp_path / ".env"
     env_file.write_text("STACKTWIN_APP_MODE=local\n")
